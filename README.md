@@ -16,7 +16,7 @@ CODEDIR=`pwd`
 ## Installation of Python dependencies with virtual environment
 
 
-Make a directory to house virtual environments if you don't already have one, and move to it:
+create a conda environment and activate it:
 
 ```
 conda create -n py_ophelia_dctts python=3
@@ -30,7 +30,8 @@ Then:
 
 ```
 conda install -c anaconda tensorflow-gpu=1.14.0
-pip install -r ./requirements.txt
+pip install librosa matplotlib
+pip install -r requirements.txt
 ```
 
 ## Data
