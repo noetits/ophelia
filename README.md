@@ -19,22 +19,17 @@ CODEDIR=`pwd`
 Make a directory to house virtual environments if you don't already have one, and move to it:
 
 ```
-mkdir /convenient/location/virtual_python/
-cd /convenient/location/virtual_python/
-virtualenv --distribute --python=/usr/bin/python2.7 venv_dctts
-source /convenient/location/virtual_python/venv_dctts/bin/activate
+conda create -n py_ophelia_dctts
+conda activate py_ophelia_dctts
 ```
 
 With the virtual environment activated, you can now install the necessary packages.
 
-```
-cd $CODEDIR
-pip install --upgrade pip
-```
-
 Then:
 
+
 ```
+conda install numpy
 pip install -r ./requirements.txt
 ```
 
