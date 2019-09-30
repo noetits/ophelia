@@ -19,7 +19,7 @@ CODEDIR=`pwd`
 Make a directory to house virtual environments if you don't already have one, and move to it:
 
 ```
-conda create -n py_ophelia_dctts
+conda create -n py_ophelia_dctts python=3
 conda activate py_ophelia_dctts
 ```
 
@@ -29,7 +29,7 @@ Then:
 
 
 ```
-conda install numpy
+conda install -c anaconda tensorflow-gpu=1.14.0
 pip install -r ./requirements.txt
 ```
 
