@@ -122,7 +122,8 @@ FEST=$INSTALL_DIR
 SCRIPT=$CODEDIR/script/festival/make_rich_phones_cmulex.scm
 $FEST/festival/bin/festival -b $SCRIPT | grep ___KEEP___ | sed 's/___KEEP___//' | tee ./transcript_temp1.csv
 
-python $CODEDIR/script/festival/fix_transcript.py ./transcript_temp1.csv > ./transcript.csv
+python $CODEDIR/script/festival/fix_transcript.py ./transcript_temp1.csv > ./transcript_temp2.csv
+head -n-2 transcript_temp2.csv > transcript.csv
 ```
 
 During the process you should see the print of the resulting transcription, for example:
