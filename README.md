@@ -8,7 +8,7 @@ A modified version of Kyubyong Park's [dc_tts repository](https://github.com/Kyu
 Go to a suitable location and clone repository:
 
 ```
-git clone https://github.com/oliverwatts/ophelia.git
+git clone https://github.com/noetits/ophelia.git
 cd ophelia
 CODEDIR=`pwd`
 ```
@@ -16,27 +16,24 @@ CODEDIR=`pwd`
 ## Installation of Python dependencies with virtual environment
 
 
-Make a directory to house virtual environments if you don't already have one, and move to it:
+create a conda environment and activate it:
 
 ```
-mkdir /convenient/location/virtual_python/
-cd /convenient/location/virtual_python/
-virtualenv --distribute --python=/usr/bin/python2.7 venv_dctts
-source /convenient/location/virtual_python/venv_dctts/bin/activate
+conda create -n py_ophelia_dctts python=3
+conda activate py_ophelia_dctts
 ```
 
 With the virtual environment activated, you can now install the necessary packages.
 
-```
-cd $CODEDIR
-pip install --upgrade pip
-```
-
 Then:
 
+
 ```
-pip install -r ./requirements.txt
+conda install -c anaconda tensorflow-gpu=1.14.0
+pip install librosa matplotlib
+pip install -r requirements.txt
 ```
+The first command takes a few minutes. The rest is faster.
 
 ## Data
 
@@ -57,7 +54,7 @@ For more details on the dataset, visit the webpage: https://keithito.com/LJ-Spee
 
 The downloaded data contains a file called `metadata.csv` providing a transcription of the audio in plain text. Use Festival with the CMU lexicon to phonetise this transcription.
 
-If you don't have a Festival installation, you can obtain one by running:
+If you don't have a Festival installation, you can obtain one by running (takes a few minutes):
 
 ```
 INSTALL_DIR=/some/convenient/directory/festival
@@ -91,6 +88,9 @@ wget http://www.cstr.ed.ac.uk/downloads/festival/2.4/festlex_POSLEX.tar.gz
 tar xvf festlex_POSLEX.tar.gz
 ```
 
+If gmake is not found, do this and try again: `sudo ln -s /usr/bin/make /usr/bin/gmake`
+gmake is make on Ubuntu (any GNU/Linux system). 
+
 To test the installation, open Festival and load the voice.
 Run the *locally installed* festival (NB: initial ./ is important!)
 
@@ -100,6 +100,13 @@ festival> (voice_cmu_us_awb_cg)
 festival> (SayText "If i'm speaking then installation actually went ok.")
 festival> (quit)
 ```
+
+If you have an error about /dev/dsp, search for the file "festival.scm" in festival installation and add these lines:
+```
+(Parameter.set 'Audio_Command "aplay -q -c 1 -t raw -f s16 -r $SR $FILE")
+(Parameter.set 'Audio_Method 'Audio_Command)
+```
+[source](https://unix.stackexchange.com/questions/241250/linux-cant-open-dev-dsp)
 
 ## Data preparation (2): obtaining phonetic transcriptions
 
@@ -115,7 +122,8 @@ FEST=$INSTALL_DIR
 SCRIPT=$CODEDIR/script/festival/make_rich_phones_cmulex.scm
 $FEST/festival/bin/festival -b $SCRIPT | grep ___KEEP___ | sed 's/___KEEP___//' | tee ./transcript_temp1.csv
 
-python $CODEDIR/script/festival/fix_transcript.py ./transcript_temp1.csv > ./transcript.csv
+python $CODEDIR/script/festival/fix_transcript.py ./transcript_temp1.csv > ./transcript_temp2.csv
+head -n-2 transcript_temp2.csv > transcript.csv
 ```
 
 During the process you should see the print of the resulting transcription, for example:
