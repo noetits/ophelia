@@ -88,8 +88,16 @@ wget http://www.cstr.ed.ac.uk/downloads/festival/2.4/festlex_POSLEX.tar.gz
 tar xvf festlex_POSLEX.tar.gz
 ```
 
+
 If gmake is not found, do this and try again: `sudo ln -s /usr/bin/make /usr/bin/gmake`
 gmake is make on Ubuntu (any GNU/Linux system). 
+
+
+or install with apt:
+```
+sudo apt-get install festival festvox-kallpc16k
+```
+[source](http://wisercoder.com/install-festival-text-speech-ubuntu/)
 
 To test the installation, open Festival and load the voice.
 Run the *locally installed* festival (NB: initial ./ is important!)
