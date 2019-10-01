@@ -1,10 +1,4 @@
 
-
-
-
-
-
-
 import sys, codecs, re, regex
 
 
@@ -51,4 +45,5 @@ for sep in badseps:
 # for bad in bad_strings:
 #     lines = lines.replace('<'+bad+'>', '<>')
 
-print text.encode('utf8')
+print(text)
+#print(text.encode('utf8'))
