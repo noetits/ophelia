@@ -161,7 +161,10 @@ def load_data(hp, mode="train"):
         text_lengths.append(text_length)                
 
         if hp.merlin_label_dir: ## only get shape here -- get the data later
-            label_length, label_dim = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
+            try:
+                label_length, label_dim = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
+            except TypeError:
+                label_length, label_dim = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath.decode('utf-8'))+".npy")).shape
             label_lengths.append(label_length)
             assert label_dim==hp.merlin_lab_dim
 
@@ -334,10 +337,17 @@ def get_batch(hp, batchsize):
 
             assert os.path.isdir(hp.full_mel_dir)
             def _load_and_reduce_spectrograms(fpath):
-                fname = os.path.basename(fpath)
-                melfile = "{}/{}".format(hp.full_mel_dir, fname.replace("wav", "npy"))
-                magfile = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
-
+                try:
+                    fname = os.path.basename(fpath)
+                except TypeError:
+                    fname = os.path.basename(fpath.decode('utf-8'))
+                try:
+                    melfile = "{}/{}".format(hp.full_mel_dir, fname.replace("wav", "npy"))
+                    magfile = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
+                except TypeError:
+                    # in python 3, we have to do this because of this: https://docs.python.org/3/howto/pyporting.html#text-versus-binary-data
+                    melfile = "{}/{}".format(hp.full_mel_dir, fname.decode('utf-8').replace("wav", "npy"))
+                    magfile = "{}/{}".format(hp.full_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
                 mel = np.load(melfile)
                 mag = np.load(magfile)
 
@@ -382,8 +392,15 @@ def get_batch(hp, batchsize):
                 positions = positions[random_start_position::hp.r, :]                   
                 return fname, mel, mag, duration_matrix, positions
             def _load_merlin_positions():
-                fname = os.path.basename(fpath)
-                merlin_position_file = "{}/{}".format(hp.merlin_position_dir, fname.replace("wav", "npy"))
+                try:
+                    fname = os.path.basename(fpath)
+                except TypeError:
+                    fname = os.path.basename(fpath.decode('utf-8'))
+                try:
+                    merlin_position_file = "{}/{}".format(hp.merlin_position_dir, fname.replace("wav", "npy"))
+                except TypeError:
+                    # in python 3, we have to do this because of this: https://docs.python.org/3/howto/pyporting.html#text-versus-binary-data
+                    merlin_position_file = "{}/{}".format(hp.merlin_position_dir, fname.decode('utf-8').replace("wav", "npy"))
                 positions = np.load(merlin_position_file)
                 return positions
             def _load_and_reduce_spectrograms_and_durations_and_merlin_positions(fpath, duration):
@@ -411,9 +428,18 @@ def get_batch(hp, batchsize):
 
         elif hp.prepro:
             def _load_spectrograms(fpath):
-                fname = os.path.basename(fpath)
-                mel = "{}/{}".format(hp.coarse_audio_dir, fname.replace("wav", "npy"))
-                mag = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
+                try:
+                    fname = os.path.basename(fpath)
+                except TypeError:
+                    fname = os.path.basename(fpath.decode('utf-8'))
+                try:
+                    mel = "{}/{}".format(hp.coarse_audio_dir, fname.replace("wav", "npy"))
+                    mag = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
+                except TypeError:
+                    # in python 3, we have to do this because of this: https://docs.python.org/3/howto/pyporting.html#text-versus-binary-data
+                    mel = "{}/{}".format(hp.coarse_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
+                    mag = "{}/{}".format(hp.full_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
+                
                 if 0:
                     print ('mag file:')
                     print (mag)
@@ -426,14 +452,20 @@ def get_batch(hp, batchsize):
 
         if hp.attention_guide_dir:
             def load_attention(fpath):
-                attention_guide_file = "{}/{}".format(hp.attention_guide_dir, basename(fpath)+".npy")
+                try:
+                    attention_guide_file = "{}/{}".format(hp.attention_guide_dir, basename(fpath)+".npy")
+                except TypeError:
+                    attention_guide_file = "{}/{}".format(hp.attention_guide_dir, basename(fpath.decode('utf-8'))+".npy")
                 attention_guide = read_floats_from_8bit(attention_guide_file)
                 return fpath, attention_guide
             _, attention_guide = tf.py_func(load_attention, [fpath], [tf.string, tf.float32]) # py_func wraps a python function and use it as a TensorFlow op.
 
         if hp.merlin_label_dir:
             def load_merlin_label(fpath):
-                label_file = "{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")
+                try:
+                    label_file = "{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")
+                except TypeError:
+                    label_file = "{}/{}".format(hp.merlin_label_dir, basename(fpath.decode('utf-8'))+".npy")
                 label = np.load(label_file) ## TODO: could use read_floats_from_8bit format
                 return fpath, label
             _, merlin_label = tf.py_func(load_merlin_label, [fpath], [tf.string, tf.float32]) # py_func wraps a python function and use it as a TensorFlow op.
