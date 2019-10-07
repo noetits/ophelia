@@ -29,7 +29,7 @@ Then:
 
 
 ```
-conda install -c anaconda tensorflow-gpu=1.14.0
+conda install -c anaconda tensorflow-gpu=1.13.1
 pip install librosa matplotlib
 pip install -r requirements.txt
 ```
