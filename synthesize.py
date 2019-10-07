@@ -36,7 +36,8 @@ def start_clock(comment):
     print ('%s... '%(comment)),
     return (timeit.default_timer(), comment)
 
-def stop_clock((start_time, comment), width=40):
+def stop_clock( start_time_comment, width=40):
+    start_time, comment = start_time_comment
     padding = (width - len(comment)) * ' '
     print ('%s--> took %.2f seconds' % (padding, (timeit.default_timer() - start_time)) )
 

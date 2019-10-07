@@ -72,7 +72,8 @@ def main_work():
     a.add_argument('-c', dest='config', required=True, type=str)
     a.add_argument('-m', dest='model_type', required=True, choices=['t2m', 'ssrn', 'babbler'])
     opts = a.parse_args()
-    
+    print('opts')
+    print(opts)
     # ===============================================
     model_type = opts.model_type
     hp = load_config(opts.config)
@@ -98,7 +99,7 @@ def main_work():
         
     ## take random subset of validation set to avoid 'This is a librivox recording' type sentences
     random.seed(1234)
-    v_indices = range(len(valid_filenames))
+    v_indices = list(range(len(valid_filenames)))
     random.shuffle(v_indices)
     v = min(hp.validation_sentences_to_evaluate, len(valid_filenames))
     v_indices = v_indices[:v]
