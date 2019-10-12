@@ -13,6 +13,7 @@ import os
 import glob
 import unicodedata
 import logging 
+import sys
 
 import numpy as np
 import tensorflow as tf

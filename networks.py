@@ -12,7 +12,7 @@ from __future__ import print_function
 from modules import *
 import tensorflow as tf
 
-def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
+def TextEnc(hp, L, training=True, emos=None, speaker_codes=None, reuse=None):
     '''
     Args:
       L: Text inputs. (B, N)
@@ -36,6 +36,10 @@ def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
                        num_units=hp.speaker_embedding_size,
                        scope="embed_{}".format(i), reuse=reuse); i += 1 
         tensor = tf.concat((tensor, speaker_reps), -1)
+    
+    if not emos is None: 
+        tensor=broadcast_concat(tensor,emos)
+    
     tensor = conv1d(tensor,
                     filters=2*hp.d,
                     size=1,
@@ -176,6 +180,86 @@ def AudioEnc(hp, S, training=True, speaker_codes=None, reuse=None):
                         lcc=lcc, codes=speaker_codes); i += 1
 
     return tensor
+
+def Audio2Emo(hp, S, training=True, speaker_codes=None, reuse=None):
+    '''
+    Args:
+      S: melspectrogram. (B, T/r, n_mels)
+
+    Returns
+      Q: Queries. (B, T/r, d)
+    '''
+    lcc = 0
+    i=1
+    
+    tensor = conv1d(S,
+                    filters=hp.uee,
+                    size=1,
+                    rate=1,
+                    padding="CAUSAL",
+                    dropout_rate=hp.dropout_rate,
+                    activation_fn=tf.nn.relu,
+                    training=training,
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    lcc=lcc, codes=speaker_codes); i += 1
+
+    tensor = conv1d(tensor,
+                    size=1,
+                    rate=1,
+                    padding="CAUSAL",
+                    dropout_rate=hp.dropout_rate,
+                    activation_fn=tf.nn.relu,
+                    training=training,
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    lcc=lcc, codes=speaker_codes); i += 1
+    tensor = conv1d(tensor,
+                    size=1,
+                    rate=1,
+                    padding="CAUSAL",
+                    dropout_rate=hp.dropout_rate,
+                    training=training,
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    lcc=lcc, codes=speaker_codes); i += 1
+    for _ in range(2):
+        for j in range(4):
+            tensor = hc(tensor,
+                            size=3,
+                            rate=3**j,
+                            padding="CAUSAL",
+                            dropout_rate=hp.dropout_rate,
+                            training=training,
+                            scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                            lcc=lcc, codes=speaker_codes); i += 1
+    for _ in range(2):
+        tensor = hc(tensor,
+                        size=3,
+                        rate=3,
+                        padding="CAUSAL",
+                        dropout_rate=hp.dropout_rate,
+                        training=training,
+                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                        lcc=lcc, codes=speaker_codes); i += 1
+
+    return tensor
+
+
+def broadcast_concat(Y, info):
+    '''
+        Args:
+          Y: (B, T, n)
+          info: (B, d)
+
+        Returns:
+          Y: (B, T, n+d)
+        '''
+    B = tf.shape(Y)[0]
+    T = tf.shape(Y)[1]
+    d = tf.shape(info)[-1]
+    info = tf.ones([B, T, d]) * info  # (B, T, d)
+    Y = tf.concat([Y, info], 2)  # (B, T, n+d)
+
+    return Y
+
 
 def Attention(hp, Q, K, V, monotonic_attention=False, prev_max_attentions=None):
     '''

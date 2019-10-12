@@ -5,9 +5,10 @@ Based on code by kyubyong park at https://www.github.com/kyubyong/dc_tts
 '''
 
 from data_load import get_batch, load_vocab
-from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN, FixedAttention, LinearTransformLabels
+from networks import Audio2Emo, TextEnc, AudioEnc, AudioDec, Attention, SSRN, FixedAttention, LinearTransformLabels
 import tensorflow as tf
 from utils import get_global_attention_guide, learning_rate_decay
+import pdb
 
 class Graph(object):
 
@@ -199,8 +200,24 @@ class Text2MelGraph(Graph):
                 #sys.exit('Not implemented: hp.text_encoder_type=="minimal_feedforward"')
                 self.K = self.V = LinearTransformLabels(self.hp, self.merlin_label, training=self.training, reuse=self.reuse)
             else: ## default DCTTS text encoder
+
+            # Build a latent representation of expressiveness, if we defined uee in config file (for unsupervised expressiveness embedding)
+                try:
+                    if self.hp.uee!=0:
+                        with tf.variable_scope("Audio2Emo"):
+                            self.emos = Audio2Emo(self.hp, self.S, training=self.training, speaker_codes=self.speakers, reuse=self.reuse) # (B, T/r, d=8)
+                            self.emo_mean = tf.reduce_mean(self.emos, 1)
+                            print(self.emo_mean.get_shape())
+                            self.emo_mean = tf.expand_dims(self.emo_mean,axis=1)
+                            print(self.emo_mean.get_shape())
+                            #pdb.set_trace()
+                except:
+                    print('No unsupervised expressive embedding')
+                    self.emo_mean=None
+                    #pdb.set_trace()
+
                 with tf.variable_scope("TextEnc"):
-                    self.K, self.V = TextEnc(self.hp, self.L, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)
+                    self.K, self.V = TextEnc(self.hp, self.L, training=self.training, emos=self.emo_mean, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)
 
             with tf.variable_scope("AudioEnc"):
                 if self.hp.history_type in ['fractional_position_in_phone', 'absolute_position_in_phone']:
@@ -285,7 +302,6 @@ class Text2MelGraph(Graph):
         tf.summary.scalar('train/loss_att', self.loss_att)
         tf.summary.image('train/mel_gt', tf.expand_dims(tf.transpose(self.mels[:1], [0, 2, 1]), -1))
         tf.summary.image('train/mel_hat', tf.expand_dims(tf.transpose(self.Y[:1], [0, 2, 1]), -1))
-
 
 
 
