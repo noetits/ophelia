@@ -29,7 +29,7 @@ Then:
 
 
 ```
-conda install -c anaconda tensorflow-gpu=1.14.0
+conda install -c anaconda tensorflow-gpu=1.13.1
 pip install librosa matplotlib
 pip install -r requirements.txt
 ```
@@ -51,11 +51,21 @@ For more details on the dataset, visit the webpage: https://keithito.com/LJ-Spee
 
 ## Data preparation (1): installing Festival
 
-
 The downloaded data contains a file called `metadata.csv` providing a transcription of the audio in plain text. Use Festival with the CMU lexicon to phonetise this transcription.
 
-If you don't have a Festival installation, you can obtain one by running (takes a few minutes):
+If you don't have a Festival installation, you can
 
+Install with apt:
+```
+sudo apt-get install festival festvox-kallpc16k
+```
+[source](http://wisercoder.com/install-festival-text-speech-ubuntu/)
+
+
+
+<details>
+  <summary>Install from sources by running this</summary>
+  
 ```
 INSTALL_DIR=/some/convenient/directory/festival
 
@@ -93,11 +103,9 @@ If gmake is not found, do this and try again: `sudo ln -s /usr/bin/make /usr/bin
 gmake is make on Ubuntu (any GNU/Linux system). 
 
 
-or install with apt:
-```
-sudo apt-get install festival festvox-kallpc16k
-```
-[source](http://wisercoder.com/install-festival-text-speech-ubuntu/)
+</details>
+
+
 
 To test the installation, open Festival and load the voice.
 Run the *locally installed* festival (NB: initial ./ is important!)
