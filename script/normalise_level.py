@@ -9,6 +9,7 @@ import glob
 import os
 from argparse import ArgumentParser
 
+import numpy as np
 import soundfile as sf
 
 from concurrent.futures import ProcessPoolExecutor
@@ -47,6 +48,7 @@ def main_work():
     a.add_argument('-pattern', default='', \
                     help= "If given, only normalise files whose base contains this substring")
     a.add_argument('-ncores', default=1, type=int)
+    a.add_argument('-ext', dest='extension', default='.wav')
     opts = a.parse_args()
     
     # ===============================================
@@ -55,13 +57,14 @@ def main_work():
         if not os.path.isdir(direc):
             os.makedirs(direc)
 
-    flist = sorted(glob.glob(opts.indir + '/*.wav'))
+    extension=opts.extension
+    flist = sorted(glob.glob(opts.indir + '/*'+extension))
     
     executor = ProcessPoolExecutor(max_workers=opts.ncores)
     futures = []
     for wave_file in flist:
         futures.append(executor.submit(
-            partial(process, wave_file, opts.outdir, pattern=opts.pattern)))
+            partial(process, wave_file, extension, opts.outdir, pattern=opts.pattern)))
     return [future.result() for future in tqdm(futures)]
 
 
@@ -69,7 +72,7 @@ def main_work():
 
 
 
-def process(wavefile, outdir, pattern=''):
+def process(wavefile, extension, outdir, pattern=''):
     _, base = os.path.split(wavefile)
     
     if pattern:
@@ -78,12 +81,14 @@ def process(wavefile, outdir, pattern=''):
 
     # print base
 
-    raw_in = os.path.join(outdir, base.replace('.wav','.raw'))
-    raw_out = os.path.join(outdir, base.replace('.wav','_norm.raw'))
-    logfile = os.path.join(outdir, base.replace('.wav','.log'))
+    raw_in = os.path.join(outdir, base.replace(extension,'.raw'))
+    raw_out = os.path.join(outdir, base.replace(extension,'_norm.raw'))
+    logfile = os.path.join(outdir, base.replace(extension,'.log'))
     wav_out = os.path.join(outdir, base)
     
-    data, samplerate = sf.read(wavefile, dtype='int16')
+    data, samplerate = sf.read(wavefile)#, dtype='int16')
+    data *= 32767 # from the range of a dtype float64 [-1,1] to the range of a dtype int16 [2**16/2-1, 2**16/2-1]
+    data=data.round().astype(np.int16)
     sf.write(raw_in, data, samplerate, subtype='PCM_16')
     os.system('%s -log %s -q -lev -26.0 -sf %s %s %s'%(sv56, logfile, samplerate, raw_in, raw_out))
     norm_data, samplerate = sf.read(raw_out, dtype='int16', samplerate=samplerate, channels=1, subtype='PCM_16')

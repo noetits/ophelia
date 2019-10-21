@@ -39,13 +39,14 @@ def main_work():
     a = ArgumentParser()
     a.add_argument('-c', dest='config', required=True, type=str)
     a.add_argument('-ncores', default=1, type=int, help='Number of cores for parallel processing')    
+    a.add_argument('-ext', dest='extension', default='.wav')
     opts = a.parse_args()
     
     # ===============================================
 
     hp = load_config(opts.config)
-
-    fpaths = sorted(glob.glob(hp.waveforms + '/*.wav'))
+    extension=opts.extension
+    fpaths = sorted(glob.glob(hp.waveforms + '/*'+extension))
 
     safe_makedir(hp.coarse_audio_dir)
     safe_makedir(hp.full_audio_dir)

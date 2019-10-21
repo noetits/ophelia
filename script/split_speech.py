@@ -43,17 +43,18 @@ def main_work():
     a.add_argument('-trimonly', action='store_true', default=False)  
     a.add_argument('-ncores', type=int, default=0)   
     a.add_argument('-endpad', type=float, default=0.3)
+    a.add_argument('-ext', dest='extension', default='.wav')
     opts = a.parse_args()
     
     # ===============================================
     
-    trim_waves_in_directory(opts.wave_dir, opts.output_dir, num_workers=opts.ncores, \
+    trim_waves_in_directory(opts.wave_dir, opts.output_dir, extension=opts.extension, num_workers=opts.ncores, \
             tqdm=tqdm, nfiles=opts.nfiles, top_db=opts.top_db, trimonly=opts.trimonly, endpad=opts.endpad)
 
-def trim_waves_in_directory(in_dir, out_dir, num_workers=1, tqdm=lambda x: x, \
+def trim_waves_in_directory(in_dir, out_dir, extension='.wav', num_workers=1, tqdm=lambda x: x, \
                 nfiles=0, top_db=30, trimonly=False, endpad=0.3):
     safe_makedir(out_dir)
-    wave_files = sorted(glob.glob(in_dir + '/*.wav'))
+    wave_files = sorted(glob.glob(in_dir + '/*'+extension))
     if nfiles > 0:
         wave_files = wave_files[:min(nfiles, len(wave_files))]
 
@@ -62,15 +63,15 @@ def trim_waves_in_directory(in_dir, out_dir, num_workers=1, tqdm=lambda x: x, \
         futures = []
         for (index, wave_file) in enumerate(wave_files):
             futures.append(executor.submit(
-                partial(_process_utterance, wave_file, out_dir, top_db=top_db, trimonly=trimonly, end_pad_sec=endpad)))
+                partial(_process_utterance, wave_file, out_dir, extension=extension, top_db=top_db, trimonly=trimonly, end_pad_sec=endpad)))
         return [future.result() for future in tqdm(futures)]
     else:  ## serial processing
         for wave_file in tqdm(wave_files):
-            _process_utterance(wave_file, out_dir, top_db=top_db, trimonly=trimonly, end_pad_sec=endpad)        
+            _process_utterance(wave_file, out_dir, extension=extension, top_db=top_db, trimonly=trimonly, end_pad_sec=endpad)        
 
 
 
-def _process_utterance(wav_path, out_dir, top_db=30, end_pad_sec=0.3, pad_sec=0.01, minimum_duration_sec=0.5, trimonly=False):
+def _process_utterance(wav_path, out_dir, extension='.wav', top_db=30, end_pad_sec=0.3, pad_sec=0.01, minimum_duration_sec=0.5, trimonly=False):
 
     wav, fs = soundfile.read(wav_path)  ## TODO: assert mono
     pad = int(pad_sec * fs)
@@ -83,7 +84,7 @@ def _process_utterance(wav_path, out_dir, top_db=30, end_pad_sec=0.3, pad_sec=0.
     end = min(len(wav), (end + end_pad))
     wav = wav[start:end]
     if trimonly:
-        ofile = os.path.join(out_dir, base + '.wav')
+        ofile = os.path.join(out_dir, base + extension)
         soundfile.write(ofile, wav, fs)
     else:
         starts_ends = librosa.effects.split(wav, top_db=top_db)
@@ -96,7 +97,7 @@ def _process_utterance(wav_path, out_dir, top_db=30, end_pad_sec=0.3, pad_sec=0.
 
         for (i, (s,e)) in enumerate(starts_ends):
 
-            ofile = os.path.join(out_dir, base + '_seg%s.wav'%(str(i+1).zfill(4)))
+            ofile = os.path.join(out_dir, base + '_seg%s'%(str(i+1).zfill(4))+extension)
             # print ofile
             soundfile.write(ofile, wav[s:e], fs)
 
