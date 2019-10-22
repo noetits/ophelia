@@ -56,24 +56,43 @@ def phones_normalize(text, char2idx, speaker_code=''):
             sys.exit('Phone %s not listed in phone set'%(phone))
     return phones
 
+def text_to_phonetic(text='Hello world', festival_cmd='festival'):
+    import os
+    if not os.path.exists('demo/'): os.makedirs('demo/')
+    os.chdir('demo/')
+    with open("utts.data", "w") as text_file:
+        utt='(test "'+text+'")'
+        text_file.write(utt)
+    SCRIPT="../script/festival/make_rich_phones_cmulex.scm"
+
+    cmd=festival_cmd+' -b '+SCRIPT+" | grep ___KEEP___ | sed 's/___KEEP___//' | tee ./transcript_temp1.csv"
+    os.system(cmd)
+
+    cmd='python ../script/festival/fix_transcript.py ./transcript_temp1.csv > ./transcript.csv'
+    os.system(cmd)
+
+    os.chdir('..')
+
 def load_data(hp, mode="train"):
     '''Loads data
       Args:
-          mode: "train" / "validation" / "synthesize".
+          mode: "train" / "validation" / "synthesize" / "demo".
     '''
-    assert mode in ('train', 'synthesis', 'validation')
+    assert mode in ('train', 'synthesis', 'validation', 'demo')
     logging.info('Start loading data in mode: %s'%(mode))
 
     get_speaker_codes = ( hp.multispeaker != []) ## False if hp.multispeaker is empty list
-    if mode=='synthesis': get_speaker_codes = False ## never read speaker from transcript for synthesis -- take user-specified speaker instead
+    if mode in ['synthesis', 'demo']: get_speaker_codes = False ## never read speaker from transcript for synthesis -- take user-specified speaker instead
 
     # Load vocabulary
     char2idx, idx2char = load_vocab(hp)
 
     if mode in ["train", "validation"]:
         transcript = os.path.join(hp.transcript)
-    else:
+    elif mode == 'synthesis':
         transcript = os.path.join(hp.test_transcript)
+    else:
+        transcript = './demo/transcript.csv'
 
     if hp.multispeaker:
         speaker2ix = dict(zip(hp.speaker_list, range(len(hp.speaker_list))))
@@ -224,7 +243,7 @@ def load_data(hp, mode="train"):
         if hp.use_external_durations:
             durations = [d.tostring() for d in durations]   
 
-    if mode in ['validation', 'synthesis']:
+    if mode in ['validation', 'synthesis', 'demo']:
         ## Prepare a batch of 'stacked texts' (matrix with number of rows==synthesis batch size, and each row an array of integers)
         stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
         for i, text in enumerate(texts):
@@ -287,8 +306,6 @@ def load_data(hp, mode="train"):
     #     for i, text in enumerate(texts):
     #         stacked_texts[i, :len(text)] = text
     #     return (fpaths, stacked_texts) ## fpaths only a way to get bases -- wav files probably do not exist
-
-
 
 def get_batch(hp, batchsize):
     """Loads training data and put them in queues"""
