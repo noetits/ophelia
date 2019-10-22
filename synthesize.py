@@ -345,7 +345,7 @@ def restore_archived_model_parameters(sess, hp, model_type, epoch_number):
     if not os.path.isfile(desired_checkpoint + '.index'): sys.exit('No %s at %s?'%(model_type, desired_checkpoint))
     saver.restore(sess, desired_checkpoint)
     print("Model of type %s restored from archived epoch %s"%(model_type, epoch_number))
-    
+
 
 def babble(hp, num_sentences=0):
 
@@ -473,6 +473,148 @@ def extract_emo_code(hp, melfiles, g):
         
         codes=np.vstack(codes)
     return codes
+
+class tts_model:
+    def __init__(self, hp, t2m_epoch=-1, ssrn_epoch=-1):
+        self.t2m_epoch=t2m_epoch
+        self.ssrn_epoch=ssrn_epoch
+
+        self.g1 = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 (t2m) loaded")
+        self.g2 = SSRNGraph(hp, mode="synthesize"); print("Graph 2 (ssrn) loaded")
+        self.sess = tf.Session()
+
+        self.sess.run(tf.global_variables_initializer())
+
+        ### TODO: specify epoch from comm line?
+        ### TODO: t2m and ssrn from separate configs?
+
+        if t2m_epoch > -1:
+            restore_archived_model_parameters(self.sess, hp, 't2m', t2m_epoch)
+        else:
+            self.t2m_epoch = restore_latest_model_parameters(self.sess, hp, 't2m')
+        if ssrn_epoch > -1:    
+            restore_archived_model_parameters(self.sess, hp, 'ssrn', ssrn_epoch)
+        else:
+            self.ssrn_epoch = restore_latest_model_parameters(self.sess, hp, 'ssrn')
+     
+    def synthesize(self, hp, text=None, emo_code=None, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
+        '''
+        topoutdir: store samples under here; defaults to hp.sampledir
+        t2m_epoch and ssrn_epoch: default -1 means use latest. Otherwise go to archived models.
+        '''
+        assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
+
+        if text is not None:
+            text_to_phonetic(text=text)
+            dataset=load_data(hp, mode='demo')
+        else:
+            dataset = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
+        fpaths, L = dataset['fpaths'], dataset['texts']
+        position_in_phone_data = duration_data = labels = None # default
+        if hp.use_external_durations:
+            duration_data = dataset['durations']
+            if num_sentences > 0:
+                duration_data = duration_data[:num_sentences, :, :]
+
+        if 'position_in_phone' in hp.history_type:
+            ## TODO: combine + deduplicate with relevant code in train.py for making validation set
+            def duration2position(duration, fractional=False):     
+                ### very roundabout -- need to deflate A matrix back to integers:
+                duration = duration.sum(axis=0)
+                #print(duration)
+                # sys.exit('evs')   
+                positions = durations_to_position(duration, fractional=fractional)
+                ###positions = end_pad_for_reduction_shape_sync(positions, hp)
+                positions = positions[0::hp.r, :]         
+                #print(positions)
+                return positions
+
+            position_in_phone_data = [duration2position(dur, fractional=('fractional' in hp.history_type)) \
+                            for dur in duration_data]       
+            position_in_phone_data = list2batch(position_in_phone_data, hp.max_T)
+
+        # Ensure we aren't trying to generate more utterances than are actually in our test_transcript
+        if num_sentences > 0:
+            assert num_sentences < len(fpaths)
+            L = L[:num_sentences, :]
+            fpaths = fpaths[:num_sentences]
+
+        bases = [basename(fpath) for fpath in fpaths]
+
+        if hp.merlin_label_dir:
+            labels = [np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")) \
+                                for fpath in fpaths ]
+            labels = list2batch(labels, hp.max_N)
+
+
+        if speaker_id:
+            speaker2ix = dict(zip(hp.speaker_list, range(len(hp.speaker_list))))
+            speaker_ix = speaker2ix[speaker_id]
+
+            ## Speaker codes are held in (batch, 1) matrix -- tiling is done inside the graph:
+            speaker_data = np.ones((len(L), 1))  *  speaker_ix
+        else:
+            speaker_data = None
+
+        # Pass input L through Text2Mel Graph
+        t = start_clock('Text2Mel generating...')
+        ### TODO: after futher efficiency testing, remove this fork
+        if 1:  ### efficient route -- only make K&V once  ## 3.86, 3.70, 3.80 seconds (2 sentences)
+            text_lengths = get_text_lengths(L)
+            K, V = encode_text(hp, L, self.g1, self.sess, emo_mean=emo_code, speaker_data=speaker_data, labels=labels)
+            Y, lengths, alignments = synth_codedtext2mel(hp, K, V, text_lengths, self.g1, self.sess, \
+                                speaker_data=speaker_data, duration_data=duration_data, \
+                                position_in_phone_data=position_in_phone_data,\
+                                labels=labels)
+        else: ## 5.68, 5.43, 5.38 seconds (2 sentences)
+            Y, lengths = synth_text2mel(hp, L, self.g1, self.sess, speaker_data=speaker_data, \
+                                            duration_data=duration_data, \
+                                            position_in_phone_data=position_in_phone_data, \
+                                            labels=labels)
+        stop_clock(t)
+
+        ### TODO: useful to test this?
+        # print(Y[0,:,:])
+        # print (np.isnan(Y).any())
+        # print('nan1')
+        # Then pass output Y of Text2Mel Graph through SSRN graph to get high res spectrogram Z.
+        t = start_clock('Mel2Mag generating...')
+        Z = synth_mel2mag(hp, Y, self.g2, self.sess)
+        stop_clock(t) 
+
+        if (np.isnan(Z).any()):  ### TODO: keep?
+            Z = np.nan_to_num(Z)
+
+        # Generate wav files
+        if not topoutdir:
+            topoutdir = hp.sampledir
+        outdir = os.path.join(topoutdir, 't2m%s_ssrn%s'%(self.t2m_epoch, self.ssrn_epoch))
+        if speaker_id:
+            outdir += '_speaker-%s'%(speaker_id)
+        safe_makedir(outdir)
+        print("Generating wav files, will save to following dir: %s"%(outdir))
+
+        
+        assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
+
+        if ncores==1:
+            for i, mag in tqdm(enumerate(Z)):
+                outfile = os.path.join(outdir, bases[i] + '.wav')
+                mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
+                synth_wave(hp, mag, outfile)
+        else:
+            executor = ProcessPoolExecutor(max_workers=ncores)    
+            futures = []
+            for i, mag in tqdm(enumerate(Z)):
+                outfile = os.path.join(outdir, bases[i] + '.wav')
+                mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
+                futures.append(executor.submit(synth_wave, hp, mag, outfile))
+            proc_list = [future.result() for future in tqdm(futures)]
+            
+        # Plot attention alignments 
+        for i in range(num_sentences):
+            plot_alignment(hp, alignments[i], utt_idx=i+1, t2m_epoch=self.t2m_epoch, dir=outdir)
+
 
 
 def synthesize(hp, text=None, emo_code=None, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_epoch=-1, ssrn_epoch=-1):
