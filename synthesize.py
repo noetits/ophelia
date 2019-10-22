@@ -22,7 +22,7 @@ from tqdm import tqdm
 from utils import plot_alignment
 from utils import spectrogram2wav, durations_to_position
 from utils import split_streams, magphase_synth_from_compressed 
-from data_load import load_data
+from data_load import load_data, text_to_phonetic
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
 from libutil import safe_makedir, basename
 from configuration import load_config
@@ -229,15 +229,24 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_dat
 
     return (Y, t_ends.tolist(), alignments)
 
-def encode_text(hp, L, g, sess, speaker_data=None, labels=None):  
+def encode_text(hp, L, g, sess, emo_mean=None, speaker_data=None, labels=None):  
 
-    feeddict = {g.L: L}
+    if emo_mean is None:
+        feeddict = {g.L: L}
+    else:
+        feeddict = {g.L: L, g.emo_mean: emo_mean}
     if hp.multispeaker:
         feeddict[g.speakers] = speaker_data   
     if hp.merlin_label_dir:
         feeddict[g.merlin_label] = labels  
     K, V = sess.run([ g.K, g.V], feeddict)
     return (K, V)
+
+def encode_audio2emo(hp, mels, g, sess):
+    
+    #code = np.concatenate([sess.run(g.emo_mean, {g.mels: Y_batch}) for Y_batch in batches])
+    code=sess.run(g.emo_mean, {g.mels: mels})
+    return code
 
 def get_text_lengths(L):
     ends = []  ## indices of first padding character after the last letter
@@ -302,9 +311,17 @@ def list2batch(inlist, pad_length):
 def restore_latest_model_parameters(sess, hp, model_type):
     model_types = {  't2m': 'Text2Mel', 
                     'ssrn': 'SSRN', 
-                    'babbler': 'Text2Mel'
+                    'babbler': 'Text2Mel',
+                    'extract_emo_code':'Text2Mel/Audio2Emo'
                   }  ## map model type to string used in scope
     scope = model_types[model_type]
+
+    # if we want to extract emo code, in fact we use the t2m model. This variable is used after to go in the directory
+    # TODO: This workaround is not very pretty and may lead to some misunderstanding later... I should do it another way
+    if model_type=='extract_emo_code':
+        model_type='t2m'
+    
+#    import pdb;pdb.set_trace()
     var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
     saver = tf.train.Saver(var_list=var_list)
     savepath = hp.logdir + "-" + model_type
@@ -439,14 +456,37 @@ def synth_wave(hp, mag, outfile):
     elif hp.vocoder == 'world':
         world_synthesis(mag, outfile, hp)
 
-def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_epoch=-1, ssrn_epoch=-1):
+def extract_emo_code(hp, melfiles, g):
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        t2m_epoch = restore_latest_model_parameters(sess, hp, 'extract_emo_code')
+
+        codes=[]
+        # TODO: group in batches of 32 and process by batch
+        # use list2batch function
+        print('Feed mels to Audio2Emo encoder...')
+        for melfile in tqdm(melfiles):
+            mel=np.load(melfile)
+            mels=np.array([mel])
+            code = encode_audio2emo(hp, mels, g, sess)
+            codes.append(code)
+        
+        codes=np.vstack(codes)
+    return codes
+
+
+def synthesize(hp, text=None, emo_code=None, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_epoch=-1, ssrn_epoch=-1):
     '''
     topoutdir: store samples under here; defaults to hp.sampledir
     t2m_epoch and ssrn_epoch: default -1 means use latest. Otherwise go to archived models.
     '''
     assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
-    dataset = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
+    if text is not None:
+        text_to_phonetic(text=text)
+        dataset=load_data(hp, mode='demo')
+    else:
+        dataset = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
     fpaths, L = dataset['fpaths'], dataset['texts']
     position_in_phone_data = duration_data = labels = None # default
     if hp.use_external_durations:
@@ -522,7 +562,7 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
         ### TODO: after futher efficiency testing, remove this fork
         if 1:  ### efficient route -- only make K&V once  ## 3.86, 3.70, 3.80 seconds (2 sentences)
             text_lengths = get_text_lengths(L)
-            K, V = encode_text(hp, L, g1, sess, speaker_data=speaker_data, labels=labels)
+            K, V = encode_text(hp, L, g1, sess, emo_mean=emo_code, speaker_data=speaker_data, labels=labels)
             Y, lengths, alignments = synth_codedtext2mel(hp, K, V, text_lengths, g1, sess, \
                                 speaker_data=speaker_data, duration_data=duration_data, \
                                 position_in_phone_data=position_in_phone_data,\
