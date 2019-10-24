@@ -479,6 +479,8 @@ class tts_model:
         self.t2m_epoch=t2m_epoch
         self.ssrn_epoch=ssrn_epoch
 
+        self.hp=hp
+
         self.g1 = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 (t2m) loaded")
         self.g2 = SSRNGraph(hp, mode="synthesize"); print("Graph 2 (ssrn) loaded")
         self.sess = tf.Session()
@@ -497,26 +499,26 @@ class tts_model:
         else:
             self.ssrn_epoch = restore_latest_model_parameters(self.sess, hp, 'ssrn')
      
-    def synthesize(self, hp, text=None, emo_code=None, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
+    def synthesize(self, text=None, emo_code=None, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
         '''
         topoutdir: store samples under here; defaults to hp.sampledir
         t2m_epoch and ssrn_epoch: default -1 means use latest. Otherwise go to archived models.
         '''
-        assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
+        assert self.hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
         if text is not None:
             text_to_phonetic(text=text)
-            dataset=load_data(hp, mode='demo')
+            dataset=load_data(self.hp, mode='demo')
         else:
-            dataset = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
+            dataset = load_data(self.hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
         fpaths, L = dataset['fpaths'], dataset['texts']
         position_in_phone_data = duration_data = labels = None # default
-        if hp.use_external_durations:
+        if self.hp.use_external_durations:
             duration_data = dataset['durations']
             if num_sentences > 0:
                 duration_data = duration_data[:num_sentences, :, :]
 
-        if 'position_in_phone' in hp.history_type:
+        if 'position_in_phone' in self.hp.history_type:
             ## TODO: combine + deduplicate with relevant code in train.py for making validation set
             def duration2position(duration, fractional=False):     
                 ### very roundabout -- need to deflate A matrix back to integers:
@@ -541,7 +543,7 @@ class tts_model:
 
         bases = [basename(fpath) for fpath in fpaths]
 
-        if hp.merlin_label_dir:
+        if self.hp.merlin_label_dir:
             labels = [np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")) \
                                 for fpath in fpaths ]
             labels = list2batch(labels, hp.max_N)
@@ -561,13 +563,13 @@ class tts_model:
         ### TODO: after futher efficiency testing, remove this fork
         if 1:  ### efficient route -- only make K&V once  ## 3.86, 3.70, 3.80 seconds (2 sentences)
             text_lengths = get_text_lengths(L)
-            K, V = encode_text(hp, L, self.g1, self.sess, emo_mean=emo_code, speaker_data=speaker_data, labels=labels)
-            Y, lengths, alignments = synth_codedtext2mel(hp, K, V, text_lengths, self.g1, self.sess, \
+            K, V = encode_text(self.hp, L, self.g1, self.sess, emo_mean=emo_code, speaker_data=speaker_data, labels=labels)
+            Y, lengths, alignments = synth_codedtext2mel(self.hp, K, V, text_lengths, self.g1, self.sess, \
                                 speaker_data=speaker_data, duration_data=duration_data, \
                                 position_in_phone_data=position_in_phone_data,\
                                 labels=labels)
         else: ## 5.68, 5.43, 5.38 seconds (2 sentences)
-            Y, lengths = synth_text2mel(hp, L, self.g1, self.sess, speaker_data=speaker_data, \
+            Y, lengths = synth_text2mel(self.hp, L, self.g1, self.sess, speaker_data=speaker_data, \
                                             duration_data=duration_data, \
                                             position_in_phone_data=position_in_phone_data, \
                                             labels=labels)
@@ -579,7 +581,7 @@ class tts_model:
         # print('nan1')
         # Then pass output Y of Text2Mel Graph through SSRN graph to get high res spectrogram Z.
         t = start_clock('Mel2Mag generating...')
-        Z = synth_mel2mag(hp, Y, self.g2, self.sess)
+        Z = synth_mel2mag(self.hp, Y, self.g2, self.sess)
         stop_clock(t) 
 
         if (np.isnan(Z).any()):  ### TODO: keep?
@@ -587,7 +589,7 @@ class tts_model:
 
         # Generate wav files
         if not topoutdir:
-            topoutdir = hp.sampledir
+            topoutdir = self.hp.sampledir
         outdir = os.path.join(topoutdir, 't2m%s_ssrn%s'%(self.t2m_epoch, self.ssrn_epoch))
         if speaker_id:
             outdir += '_speaker-%s'%(speaker_id)
@@ -595,25 +597,27 @@ class tts_model:
         print("Generating wav files, will save to following dir: %s"%(outdir))
 
         
-        assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
+        assert self.hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
         if ncores==1:
             for i, mag in tqdm(enumerate(Z)):
                 outfile = os.path.join(outdir, bases[i] + '.wav')
-                mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
-                synth_wave(hp, mag, outfile)
+                mag = mag[:lengths[i]*self.hp.r,:]  ### trim to generated length
+                synth_wave(self.hp, mag, outfile)
         else:
             executor = ProcessPoolExecutor(max_workers=ncores)    
             futures = []
             for i, mag in tqdm(enumerate(Z)):
                 outfile = os.path.join(outdir, bases[i] + '.wav')
-                mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
-                futures.append(executor.submit(synth_wave, hp, mag, outfile))
+                mag = mag[:lengths[i]*self.hp.r,:]  ### trim to generated length
+                futures.append(executor.submit(synth_wave, self.hp, mag, outfile))
             proc_list = [future.result() for future in tqdm(futures)]
             
         # Plot attention alignments 
         for i in range(num_sentences):
-            plot_alignment(hp, alignments[i], utt_idx=i+1, t2m_epoch=self.t2m_epoch, dir=outdir)
+            plot_alignment(self.hp, alignments[i], utt_idx=i+1, t2m_epoch=self.t2m_epoch, dir=outdir)
+        
+        self.outdir=outdir
 
 
 
