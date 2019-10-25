@@ -13,3 +13,4 @@ regex==2019.2.3
 singledispatch==3.4.0.3
 subprocess32==3.5.3
 tqdm
+PyQT5
