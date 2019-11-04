@@ -290,7 +290,7 @@ Note the use of `./util/submit_tf.sh`, which will reserve a single GPU and make 
 If you want to train the whole dataset, you have to change in the config file `n_utts = 200`, to `n_utts = 0`, as well as the number of epochs in `max_epochs = 10`. If you get any errors regarding memory, you can decrease the batch size in `batchsize = {'t2m': 32, 'ssrn': 8}` (as mels are longer, you might need to decrease especially the ssrn batch size).
 
 
-## Synthesise:
+## Synthesise
 
 Use the last saved model to synthesise N sentences from the test set:
 
@@ -299,6 +299,26 @@ $CODEDIR/util/submit_tf.sh $CODEDIR/synthesize.py -c $CODEDIR/config/lj_tutorial
 ```
 
 As promised, this will not sound at all like speech.
+
+## Synthesise with latent space
+
+To do so, you have to train an unsupervised model. Do so by using the "lj_unsupervised.cfg" config file.
+Once trained, you can compute the codes of the latent space that are extracted by the "Audio2Emo" encoder.
+
+```
+python $CODEDIR/synthesize_with_latent_space.py -c $CODEDIR/config/lj_unsupervised.cfg -m t2m -t compute_codes
+```
+
+Then use dimensionality reduction to reduce them to 2D. You can choose betwwen three dimensionality reduction methods: pca, tsne, umap:
+```
+python $CODEDIR/synthesize_with_latent_space.py -c $CODEDIR/config/lj_unsupervised.cfg -m t2m -t reduce_codes -r umap
+```
+
+Finally, you can launch the server:
+
+```
+python $CODEDIR/synthesize_with_latent_space.py -c $CODEDIR/config/lj_unsupervised.cfg -m t2m -t ICE_TTS_server -r umap
+```
 
 ## Synthesise validation data from many points in training
 
