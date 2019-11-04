@@ -41,11 +41,13 @@ def compute_unsupervised_embeddings(hp):
     fnames = [os.path.basename(fpath) for fpath in fpaths]
     melfiles = ["{}/{}".format(hp.coarse_audio_dir, fname.replace("wav", "npy")) for fname in fnames]
 
-    
+    data_info=pd.read_csv(hp.data_info)
+    emo_cats=[data_info[data_info.id==fname.split('.')[0]]['emotion'].values[0] for fname in fnames]
+
     g = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 (t2m) loaded")
     codes=extract_emo_code(hp, melfiles, g)
 
-    return codes
+    return codes, emo_cats
 
 def save_embeddings(codes, logdir, filename='emo_codes'):
     np.save(os.path.join(logdir,filename+'.npy'),codes)
@@ -54,12 +56,12 @@ def load_embeddings(logdir, filename='emo_codes'):
     codes=np.load(os.path.join(logdir,filename+'.npy'))
     return codes
 
-def save_model(model, logdir, filename='code_reduction_model_pca'):
-    pickle.dump(model, open(os.path.join(logdir,filename+'.pkl', 'wb')))
+def save(var, logdir, filename='code_reduction_model_pca'):
+    pickle.dump(var, open(os.path.join(logdir,filename+'.pkl'), 'wb'))
 
-def load_model(logdir, filename='code_reduction_model_pca'):
-    model = pickle.load(open(filename+'.pkl', 'rb'))
-    return model
+def load(logdir, filename='code_reduction_model_pca'):
+    var = pickle.load(open(os.path.join(logdir,filename+'.pkl'), 'rb'))
+    return var
 
 def embeddings_reduction(embed, method='pca'):
     from sklearn.decomposition import PCA
@@ -89,14 +91,13 @@ def scatter_plot(matrice):
     plt.show()
 
 
-    
 def main_work():
     
     # ============= Process command line ============
     a = ArgumentParser()
     a.add_argument('-c', dest='config', required=True, type=str)
     a.add_argument('-m', dest='model_type', required=True, choices=['t2m', 'ssrn', 'babbler'])
-    a.add_argument('-t', dest='task', required=True, choices=['compute_codes', 'reduce_codes', 'show_plot','ICE-TTS'])
+    a.add_argument('-t', dest='task', required=True, choices=['compute_codes', 'reduce_codes', 'show_plot','ICE_TTS','ICE_TTS_server'])
     a.add_argument('-r', dest='reduction_method', required=False, choices=['pca', 'tsne', 'umap'])
     opts = a.parse_args()
     print('opts')
@@ -111,18 +112,19 @@ def main_work():
     print(logdir)
     task=opts.task
     if task=='compute_codes':
-        codes=compute_unsupervised_embeddings(hp)
+        codes, emo_cats=compute_unsupervised_embeddings(hp)
         save_embeddings(codes, logdir)
+        save(emo_cats, logdir, filename='emo_cats')
     elif task=='reduce_codes':
         embed=load_embeddings(logdir)[:,0,:]
         #import pdb;pdb.set_trace()
         model, results=embeddings_reduction(embed, method=method)
         save_embeddings(results, logdir, filename='emo_codes_'+method)
-        save_model(model, logdir, filename='code_reduction_model_'+method)
+        save(model, logdir, filename='code_reduction_model_'+method)
     elif task=='show_plot':
         embed=load_embeddings(logdir, filename='emo_codes_'+method)
         scatter_plot(embed)
-    elif task=='ICE-TTS':
+    elif task=='ICE_TTS':
         from interface import ICE_TTS
         embed=load_embeddings(logdir)[:,0,:]
         embed_reduc=load_embeddings(logdir, filename='emo_codes_'+method)
@@ -131,6 +133,14 @@ def main_work():
         ice=ICE_TTS(hp, embed_reduc, embed)
         ice.show()
         sys.exit(app.exec_())
+    elif task=='ICE_TTS_server':
+        from server.ice_tts_server import ICE_TTS_server
+        embed=load_embeddings(logdir)[:,0,:]
+        embed_reduc=load_embeddings(logdir, filename='emo_codes_'+method)
+        emo_cats=load(logdir, filename='emo_cats')
+        ice=ICE_TTS_server(hp, embed_reduc, embed, emo_cats)
+
+
     else:
         print('Wrong task, does not exist')
 
