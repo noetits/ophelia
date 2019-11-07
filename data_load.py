@@ -73,7 +73,7 @@ def text_to_phonetic(text='Hello world', festival_cmd='festival'):
 
     os.chdir('..')
 
-def load_data(hp, mode="train"):
+def load_data(hp, mode="train", audio_extension='.wav'):
     '''Loads data
       Args:
           mode: "train" / "validation" / "synthesize" / "demo".
@@ -176,7 +176,7 @@ def load_data(hp, mode="train"):
 
         texts.append(np.array(letters_or_phones, np.int32))
 
-        fpath = os.path.join(hp.waveforms, fname + ".wav")
+        fpath = os.path.join(hp.waveforms, fname + audio_extension)
         fpaths.append(fpath)
         text_lengths.append(text_length)                
 
