@@ -320,6 +320,19 @@ Finally, you can launch the server:
 python $CODEDIR/synthesize_with_latent_space.py -c $CODEDIR/config/lj_unsupervised.cfg -m t2m -t ICE_TTS_server -r umap
 ```
 
+## Interpretation of latent space
+First you have to download and extract opensmile in a folder "tools": https://www.audeering.com/opensmile/
+
+```
+mkdir tools
+cd tools
+wget https://www.audeering.com/download/opensmile-2-3-0-tar-gz/?wpdmdl=4782 --no-check-certificate
+mv index.html\?wpdmdl\=4782 opensmile.tar.gz
+tar -xvf opensmile.tar.gz
+rm opensmile.tar.gz
+```
+
+
 ## Synthesise validation data from many points in training
 
 
