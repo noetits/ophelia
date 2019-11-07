@@ -32,7 +32,7 @@ class PlotResource:
         for g in pd.unique(df['style']):
             i = np.where(df['style'] == g)
             print(i)
-            self.ax.scatter(matrice[i,0], matrice[i,1], label=g, alpha=0.7, edgecolors='none')
+            self.ax.scatter(matrice[i,0], matrice[i,1], label=g, alpha=0.3, edgecolors='none')
 
         self.ax.legend()
         self.ax.grid(True)
@@ -64,7 +64,11 @@ def map_range(x, x0, x1, y0, y1):
     nRel=(x-x0)/(x1-x0)
     return nRel*(y1-y0)+y0
 
-from interface import closest_node
+import numpy as np
+from scipy.spatial import distance
+def closest_node(node, nodes):
+    closest_index = distance.cdist([node], nodes).argmin()
+    return closest_index
 class SynthesisResource:
     def __init__(self, hp, plot_data, codes, plotRes):
         self.hp=hp
