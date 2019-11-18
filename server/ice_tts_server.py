@@ -19,23 +19,34 @@ import json
 from data_load import load_data
 import pandas as pd
 class PlotResource:
-    def __init__(self,  hp, plot_data, codes, emo_cats=None):
+    def __init__(self,  hp, plot_data, codes, emo_cats=None, n_polar_axes=0):
         self.hp=hp
         self.plot_data=plot_data
         self.codes=codes
-        self.scatter_plot(plot_data, emo_cats)
-    def scatter_plot(self,matrice, emo_cats=None):
+        self.scatter_plot(plot_data, emo_cats, n_polar_axes)
+    def scatter_plot(self,matrice, emo_cats=None, n_polar_axes=0):
         self.fig, self.ax = plt.subplots()
         
         df=pd.DataFrame()
         df['style']=emo_cats
         for g in pd.unique(df['style']):
+            s=g.split('_')[-1].lower()
             i = np.where(df['style'] == g)
             print(i)
-            self.ax.scatter(matrice[i,0], matrice[i,1], label=g, alpha=0.3, edgecolors='none')
+            
+            self.ax.scatter(matrice[i,0], matrice[i,1], label=s, alpha=0.8, edgecolors='none')
 
-        self.ax.legend()
+        self.ax.legend(bbox_to_anchor=(0.11, 0.65))
         self.ax.grid(True)
+
+        if n_polar_axes:
+            i = np.arange(0, 1, 1/n_polar_axes)
+            theta = 2 * np.pi * i
+            rect = [0.1, 0.1, 0.8, 0.8]
+            ax_polar = self.fig.add_axes(rect, polar=True, frameon=False)
+
+            for t in theta:
+                ax_polar.plot([t,t], [0,1], color='r', linewidth=3)
 
         #self.ax.scatter(matrice[:,0], matrice[:,1])
         #plt.show()
@@ -54,7 +65,6 @@ class PlotResource:
         res.data = out.getvalue()
         res.content_type = 'image/png'
 
-
 def map_range(x, x0, x1, y0, y1):
     '''
     Map the number n from the range x0,x1 to the range y0,y1
@@ -70,9 +80,9 @@ def closest_node(node, nodes):
     closest_index = distance.cdist([node], nodes).argmin()
     return closest_index
 class SynthesisResource:
-    def __init__(self, hp, plot_data, codes, plotRes):
+    def __init__(self, hp, plot_data, codes, plotRes, model_type='t2m'):
         self.hp=hp
-        self.tts=tts_model(hp)
+        self.tts=tts_model(hp, model_type=model_type)
         self.plot_data=plot_data
         self.codes=codes
         self.plotRes=plotRes
@@ -86,7 +96,6 @@ class SynthesisResource:
         if not req.params.get('y'):
             raise falcon.HTTPBadRequest()
         
-
         print(req.params.get('text'))
         print('x and y:')
         xRel=float(req.params.get('x'))
@@ -129,10 +138,10 @@ from synthesize_with_latent_space import scatter_plot
 from wsgiref import simple_server
 
 class ICE_TTS_server:
-    def __init__(self, hp, plot_data, codes, emo_cats=None, port=5000, parent=None):
+    def __init__(self, hp, plot_data, codes, emo_cats=None, n_polar_axes=0, model_type='t2m', port=5000, parent=None):
         self.api = falcon.API()
-        plotRes=PlotResource(hp, plot_data, codes, emo_cats)
-        self.api.add_route('/synthesize', SynthesisResource(hp, plot_data, codes, plotRes))
+        plotRes=PlotResource(hp, plot_data, codes, emo_cats, n_polar_axes)
+        self.api.add_route('/synthesize', SynthesisResource(hp, plot_data, codes, plotRes, model_type=model_type))
         self.api.add_route('/plot', plotRes)
         self.api.add_route('/', UIResource())
         self.port=port
