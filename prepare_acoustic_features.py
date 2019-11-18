@@ -19,15 +19,15 @@ from libutil import safe_makedir
 from configuration import load_config
 from utils import load_spectrograms
 
-def proc(fpath, hp):
+def proc(fpath, hp, extension):
     
     if not os.path.isfile(fpath):
         return
-        
+    
     fname, mel, mag, full_mel = load_spectrograms(hp, fpath)
-    np.save("{}/{}".format(hp.coarse_audio_dir, fname.replace("wav", "npy")), mel)
-    np.save("{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy")), mag)
-    np.save("{}/{}".format(hp.full_mel_dir, fname.replace("wav", "npy")), full_mel)
+    np.save("{}/{}".format(hp.coarse_audio_dir, fname.replace(extension, ".npy")), mel)
+    np.save("{}/{}".format(hp.full_audio_dir, fname.replace(extension, ".npy")), mag)
+    np.save("{}/{}".format(hp.full_mel_dir, fname.replace(extension, ".npy")), full_mel)
 
 
 def main_work():
@@ -56,7 +56,7 @@ def main_work():
     futures = []
     for fpath in fpaths:
         futures.append(executor.submit(
-            proc, fpath, hp))
+            proc, fpath, hp, extension))
     proc_list = [future.result() for future in tqdm.tqdm(futures)]
 
 
