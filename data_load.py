@@ -24,6 +24,7 @@ from utils import load_spectrograms, end_pad_for_reduction_shape_sync, \
                     durations_to_position # durations_to_fractional_position,
 
 from tqdm import tqdm
+import pandas as pd
 
 def load_vocab(hp):
     vocab = hp.vocab # default
@@ -80,239 +81,242 @@ def load_data(hp, mode="train", audio_extension='.wav'):
     '''
     assert mode in ('train', 'synthesis', 'validation', 'demo')
     logging.info('Start loading data in mode: %s'%(mode))
-
     get_speaker_codes = ( hp.multispeaker != []) ## False if hp.multispeaker is empty list
-    if mode in ['synthesis', 'demo']: get_speaker_codes = False ## never read speaker from transcript for synthesis -- take user-specified speaker instead
 
-    # Load vocabulary
-    char2idx, idx2char = load_vocab(hp)
+    dataset_df_path=os.path.join(hp.featuredir,'dataset_'+mode+'.csv')
+    # TODO: this does not work in train mode because of  problem with doinf pd.eval() with bytes, I think
+    if False: #os.path.exists(dataset_df_path):
+        dataset_df=pd.read_csv(dataset_df_path)
+        
+        dataset = {}
+        #import pdb;pdb.set_trace()
+        dataset['texts'] = np.array([pd.eval(e) for e in dataset_df['texts'].tolist()])
+        dataset['fpaths'] = dataset_df['fpaths'].tolist() ## at synthesis, fpaths only a way to get bases -- wav files probably do not exist
+        dataset['text_lengths'] = dataset_df['text_lengths'].tolist() ## only used in training (where length information lost due to string format) - TODO: good motivation for this format?
+        dataset['audio_lengths'] = dataset_df['audio_lengths'].tolist() ## might be []
+        dataset['label_lengths'] = dataset_df['label_lengths'].tolist() ## might be []
 
-    if mode in ["train", "validation"]:
-        transcript = os.path.join(hp.transcript)
-    elif mode == 'synthesis':
-        transcript = os.path.join(hp.test_transcript)
+        if get_speaker_codes:
+            dataset['speakers'] = dataset_df['speakers'].tolist()
+        if hp.use_external_durations:
+            dataset['durations'] = dataset_df['durations'].tolist()
+
+        return dataset
     else:
-        transcript = './demo/transcript.csv'
+        if mode in ['synthesis', 'demo']: get_speaker_codes = False ## never read speaker from transcript for synthesis -- take user-specified speaker instead
 
-    if hp.multispeaker:
-        speaker2ix = dict(zip(hp.speaker_list, range(len(hp.speaker_list))))
+        # Load vocabulary
+        char2idx, idx2char = load_vocab(hp)
 
-    fpaths, text_lengths, texts, speakers, durations = [], [], [], [], []
-    audio_lengths, label_lengths = [], []
-    lines = codecs.open(transcript, 'r', 'utf-8').readlines()
-
-    too_long_count_frames = 0
-    too_long_count_text = 0
-    no_data_count = 0
-
-    nframes = 0 ## default 'False' value
-    for line in tqdm(lines, desc='load_data'):
-        line = line.strip('\n\r |')
-        if line == '':
-            continue
-        fields = line.strip().split("|")
-
-        assert len(fields) >= 1,  fields
-        if len(fields) > 1:
-            assert len(fields) >= 3,  fields
-
-        fname = fields[0]
-        if len(fields) > 1:
-            unnorm_text, norm_text = fields[1:3]
+        if mode in ["train", "validation"]:
+            transcript = os.path.join(hp.transcript)
+        elif mode == 'synthesis':
+            transcript = os.path.join(hp.test_transcript)
         else:
-            norm_text = None # to test if audio only
+            transcript = './demo/transcript.csv'
 
+        if hp.multispeaker:
+            speaker2ix = dict(zip(hp.speaker_list, range(len(hp.speaker_list))))
 
-        if mode in ["train", "validation"] and os.path.exists(hp.coarse_audio_dir):
-            mel = "{}/{}".format(hp.coarse_audio_dir, fname+".npy")
-            if not os.path.exists(mel):
-                logging.debug('no file %s'%(mel))
-                no_data_count += 1
+        fpaths, text_lengths, texts, speakers, durations = [], [], [], [], []
+        audio_lengths, label_lengths = [], []
+        lines = codecs.open(transcript, 'r', 'utf-8').readlines()
+
+        too_long_count_frames = 0
+        too_long_count_text = 0
+        no_data_count = 0
+
+        nframes = 0 ## default 'False' value
+        for line in tqdm(lines, desc='load_data'):
+            line = line.strip('\n\r |')
+            if line == '':
                 continue
-            nframes = np.load(mel).shape[0]
-            if nframes > hp.max_T:
-                #print('number of frames for %s is %s, exceeds max_T %s: skip it'%(fname, nframes, hp.max_T))
-                too_long_count_frames += 1
+            fields = line.strip().split("|")
+
+            assert len(fields) >= 1,  fields
+            if len(fields) > 1:
+                assert len(fields) >= 3,  fields
+
+            fname = fields[0]
+            if len(fields) > 1:
+                unnorm_text, norm_text = fields[1:3]
+            else:
+                norm_text = None # to test if audio only
+
+            if hp.validpatt: 
+                if mode=="train": 
+                    if hp.validpatt in fname:
+                        continue
+                elif mode=="validation":
+                    if hp.validpatt not in fname:
+                        continue
+
+            if mode in ["train", "validation"] and os.path.exists(hp.coarse_audio_dir):
+                mel = "{}/{}".format(hp.coarse_audio_dir, fname+".npy")
+                if not os.path.exists(mel):
+                    logging.debug('no file %s'%(mel))
+                    no_data_count += 1
+                    continue
+                nframes = np.load(mel).shape[0]
+                if nframes > hp.max_T:
+                    #print('number of frames for %s is %s, exceeds max_T %s: skip it'%(fname, nframes, hp.max_T))
+                    too_long_count_frames += 1
+                    continue
+                audio_lengths.append(nframes)
+
+            if len(fields) >= 4:
+                phones = fields[3]
+
+            
+
+            ## get speaker before phones in case need to get speaker-dependent phones
+            if get_speaker_codes:
+                assert len(fields) >= 5, fields            
+                speaker = fields[4]
+                speaker_ix = speaker2ix[speaker]
+                speakers.append(np.array(speaker_ix, np.int32))    
+
+            if norm_text is None:
+                letters_or_phones = [] #  [0] ## dummy 'text' (1 character of padding) where we are using audio only
+            elif hp.input_type == 'phones':
+                if 'speaker_dependent_phones' in hp.multispeaker:
+                    speaker_code = speaker
+                else:
+                    speaker_code = ''
+                phones = phones_normalize(phones, char2idx, speaker_code=speaker_code) # in case of phones, all EOS markers are assumed included
+                letters_or_phones = [char2idx[char] for char in phones]
+            elif hp.input_type == 'letters':
+                text = text_normalize(norm_text, hp) + "E"  # E: EOS
+                letters_or_phones = [char2idx[char] for char in text]
+
+            text_length = len(letters_or_phones)
+
+            if text_length > hp.max_N:
+                #print('number of letters/phones for %s is %s, exceeds max_N %s: skip it'%(fname, text_length, hp.max_N))
+                too_long_count_text += 1
                 continue
-            audio_lengths.append(nframes)
 
-        if len(fields) >= 4:
-            phones = fields[3]
+            texts.append(np.array(letters_or_phones, np.int32))
 
-        if hp.validpatt: 
-            if mode=="train": 
-                if hp.validpatt in fname:
-                    continue
-            elif mode=="validation":
-                if hp.validpatt not in fname:
-                    continue
+            fpath = os.path.join(hp.waveforms, fname + audio_extension)
+            fpaths.append(fpath)
+            text_lengths.append(text_length)                
 
-        ## get speaker before phones in case need to get speaker-dependent phones
+            if hp.merlin_label_dir: ## only get shape here -- get the data later
+                try:
+                    label_length, label_dim = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
+                except TypeError:
+                    label_length, label_dim = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath.decode('utf-8'))+".npy")).shape
+                label_lengths.append(label_length)
+                assert label_dim==hp.merlin_lab_dim
+
+            if hp.use_external_durations:
+                assert len(fields) >= 6, fields            
+                duration_data = fields[5]
+                duration_data = [int(value) for value in re.split('\s+', duration_data.strip(' '))]
+                duration_data = np.array(duration_data, np.int32)
+                if hp.merlin_label_dir:
+                    duration_data = duration_data[duration_data > 0] ## merlin label contains no skipped items
+                    assert len(duration_data) == label_length, (len(duration_data), label_length, fpath)
+                else:
+                    assert len(duration_data) == text_length, (len(duration_data), text_length, fpath)
+                if nframes:
+                    assert duration_data.sum() == nframes*hp.r, (duration_data.sum(), nframes*hp.r)
+                durations.append(duration_data)             
+
+            # !TODO! check this -- duplicated!?
+            # if hp.merlin_label_dir: ## only get shape here -- get the data later
+            #     label_length, _ = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
+            #     label_lengths.append(label_length)
+
+
+        if mode=="validation":
+            if len(texts)==0:
+                logging.error('No validation sentences collected: maybe the validpatt %s matches no training data file names?'%(hp.validpatt)) ; sys.exit(1)
+
+        logging.info ('Loaded data for %s sentences'%(len(texts)))
+        logging.info ('Sentences skipped with missing features: %s'%(no_data_count))    
+        logging.info ('Sentences skipped with > max_T (%s) frames: %s'%(hp.max_T, too_long_count_frames))
+        logging.info ('Additional sentences skipped with > max_N (%s) letters/phones: %s'%(hp.max_N, too_long_count_text))
+    
+        if mode == 'train' and hp.n_utts > 0:
+            n_utts = hp.n_utts
+            assert n_utts <= len(fpaths)
+            logging.info ('Take first %s (n_utts) sentences for training'%(n_utts))
+            fpaths = fpaths[:n_utts]
+            text_lengths = text_lengths[:n_utts]
+            texts = texts[:n_utts]
+            if get_speaker_codes:
+                speakers = speakers[:n_utts]
+            if audio_lengths:
+                audio_lengths = audio_lengths[:n_utts]
+            if label_lengths:
+                label_lengths = label_lengths[:n_utts]
+
+
+        if mode == 'train':
+            ## Return string representation which will be parsed with tf's decode_raw:
+            texts = [text.tostring() for text in texts] 
+            if get_speaker_codes:
+                speakers = [speaker.tostring() for speaker in speakers]      
+            if hp.use_external_durations:
+                durations = [d.tostring() for d in durations]   
+
+        if mode in ['validation', 'synthesis', 'demo']:
+            ## Prepare a batch of 'stacked texts' (matrix with number of rows==synthesis batch size, and each row an array of integers)
+            stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
+            for i, text in enumerate(texts):
+                stacked_texts[i, :len(text)] = text
+            texts = stacked_texts
+
+            if hp.use_external_durations:
+                stacked_durations = np.zeros((len(texts), hp.max_T, hp.max_N), np.int32)
+                for i, dur in enumerate(durations):
+                    duration_matrix = durations_to_hard_attention_matrix(dur)
+                    duration_matrix = end_pad_for_reduction_shape_sync(duration_matrix, hp)
+                    duration_matrix = duration_matrix[0::hp.r, :] 
+                    m,n = duration_matrix.shape
+                    stacked_durations[i, :m, :n] = duration_matrix            
+                durations = stacked_durations
+
+
+        dataset = {}
+        dataset['texts'] = texts
+        dataset['fpaths'] = fpaths ## at synthesis, fpaths only a way to get bases -- wav files probably do not exist
+        dataset['text_lengths'] = text_lengths ## only used in training (where length information lost due to string format) - TODO: good motivation for this format?
+        dataset['audio_lengths'] = audio_lengths ## might be []
+        dataset['label_lengths'] = label_lengths ## might be []
+
+        dataset_df=dataset.copy()
+
+        try:
+            dataset_df['texts']=dataset_df['texts'].tolist()
+        except:
+            # It is already a list
+            pass
+        try:
+            if len(dataset_df['audio_lengths'])==0: dataset_df['audio_lengths']=[0]*len(dataset_df['texts'])                                                                                   
+            if len(dataset_df['label_lengths'])==0: dataset_df['label_lengths']=[0]*len(dataset_df['texts'])  
+            pd.DataFrame.to_csv(pd.DataFrame.from_records(dataset_df), dataset_df_path) 
+        except:
+            import pdb;pdb.set_trace()
+
         if get_speaker_codes:
-            assert len(fields) >= 5, fields            
-            speaker = fields[4]
-            speaker_ix = speaker2ix[speaker]
-            speakers.append(np.array(speaker_ix, np.int32))    
-
-        if norm_text is None:
-            letters_or_phones = [] #  [0] ## dummy 'text' (1 character of padding) where we are using audio only
-        elif hp.input_type == 'phones':
-            if 'speaker_dependent_phones' in hp.multispeaker:
-                speaker_code = speaker
-            else:
-                speaker_code = ''
-            phones = phones_normalize(phones, char2idx, speaker_code=speaker_code) # in case of phones, all EOS markers are assumed included
-            letters_or_phones = [char2idx[char] for char in phones]
-        elif hp.input_type == 'letters':
-            text = text_normalize(norm_text, hp) + "E"  # E: EOS
-            letters_or_phones = [char2idx[char] for char in text]
-
-        text_length = len(letters_or_phones)
-
-        if text_length > hp.max_N:
-            #print('number of letters/phones for %s is %s, exceeds max_N %s: skip it'%(fname, text_length, hp.max_N))
-            too_long_count_text += 1
-            continue
-
-        texts.append(np.array(letters_or_phones, np.int32))
-
-        fpath = os.path.join(hp.waveforms, fname + audio_extension)
-        fpaths.append(fpath)
-        text_lengths.append(text_length)                
-
-        if hp.merlin_label_dir: ## only get shape here -- get the data later
-            try:
-                label_length, label_dim = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
-            except TypeError:
-                label_length, label_dim = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath.decode('utf-8'))+".npy")).shape
-            label_lengths.append(label_length)
-            assert label_dim==hp.merlin_lab_dim
-
+            dataset['speakers'] = speakers
         if hp.use_external_durations:
-            assert len(fields) >= 6, fields            
-            duration_data = fields[5]
-            duration_data = [int(value) for value in re.split('\s+', duration_data.strip(' '))]
-            duration_data = np.array(duration_data, np.int32)
-            if hp.merlin_label_dir:
-                duration_data = duration_data[duration_data > 0] ## merlin label contains no skipped items
-                assert len(duration_data) == label_length, (len(duration_data), label_length, fpath)
-            else:
-                assert len(duration_data) == text_length, (len(duration_data), text_length, fpath)
-            if nframes:
-                assert duration_data.sum() == nframes*hp.r, (duration_data.sum(), nframes*hp.r)
-            durations.append(duration_data)             
-
-        # !TODO! check this -- duplicated!?
-        # if hp.merlin_label_dir: ## only get shape here -- get the data later
-        #     label_length, _ = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
-        #     label_lengths.append(label_length)
+            dataset['durations'] = durations
+        return dataset
 
 
-    if mode=="validation":
-        if len(texts)==0:
-            logging.error('No validation sentences collected: maybe the validpatt %s matches no training data file names?'%(hp.validpatt)) ; sys.exit(1)
-
-    logging.info ('Loaded data for %s sentences'%(len(texts)))
-    logging.info ('Sentences skipped with missing features: %s'%(no_data_count))    
-    logging.info ('Sentences skipped with > max_T (%s) frames: %s'%(hp.max_T, too_long_count_frames))
-    logging.info ('Additional sentences skipped with > max_N (%s) letters/phones: %s'%(hp.max_N, too_long_count_text))
- 
-
-
-
-    if mode == 'train' and hp.n_utts > 0:
-        n_utts = hp.n_utts
-        assert n_utts <= len(fpaths)
-        logging.info ('Take first %s (n_utts) sentences for training'%(n_utts))
-        fpaths = fpaths[:n_utts]
-        text_lengths = text_lengths[:n_utts]
-        texts = texts[:n_utts]
-        if get_speaker_codes:
-            speakers = speakers[:n_utts]
-        if audio_lengths:
-            audio_lengths = audio_lengths[:n_utts]
-        if label_lengths:
-            label_lengths = label_lengths[:n_utts]
-
-
-    if mode == 'train':
-        ## Return string representation which will be parsed with tf's decode_raw:
-        texts = [text.tostring() for text in texts] 
-        if get_speaker_codes:
-            speakers = [speaker.tostring() for speaker in speakers]      
-        if hp.use_external_durations:
-            durations = [d.tostring() for d in durations]   
-
-    if mode in ['validation', 'synthesis', 'demo']:
-        ## Prepare a batch of 'stacked texts' (matrix with number of rows==synthesis batch size, and each row an array of integers)
-        stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
-        for i, text in enumerate(texts):
-            stacked_texts[i, :len(text)] = text
-        texts = stacked_texts
-
-        if hp.use_external_durations:
-            stacked_durations = np.zeros((len(texts), hp.max_T, hp.max_N), np.int32)
-            for i, dur in enumerate(durations):
-                duration_matrix = durations_to_hard_attention_matrix(dur)
-                duration_matrix = end_pad_for_reduction_shape_sync(duration_matrix, hp)
-                duration_matrix = duration_matrix[0::hp.r, :] 
-                m,n = duration_matrix.shape
-                stacked_durations[i, :m, :n] = duration_matrix            
-            durations = stacked_durations
-
-
-    dataset = {}
-    dataset['texts'] = texts
-    dataset['fpaths'] = fpaths ## at synthesis, fpaths only a way to get bases -- wav files probably do not exist
-    dataset['text_lengths'] = text_lengths ## only used in training (where length information lost due to string format) - TODO: good motivation for this format?
-    dataset['audio_lengths'] = audio_lengths ## might be []
-    dataset['label_lengths'] = label_lengths ## might be []
-
-    if get_speaker_codes:
-        dataset['speakers'] = speakers
-    if hp.use_external_durations:
-        dataset['durations'] = durations
-    return dataset
-
-    ### Older version:- TODO clean up at some point
-    # if mode == 'train':
-    #     texts = [text.tostring() for text in texts]  
-    #     if get_speaker_codes:
-    #         speakers = [speaker.tostring() for speaker in speakers]         
-    #     if n_utts > 0:
-    #         assert hp.n_utts <= len(fpaths)
-    #         logging.info ('Take first %s (n_utts) sentences'%(n_utts))
-    #         if get_speaker_codes:
-    #             return fpaths[:n_utts], text_lengths[:n_utts], texts[:n_utts], speakers[:n_utts]
-    #         else:
-    #             return fpaths[:n_utts], text_lengths[:n_utts], texts[:n_utts]
-    #     else:  
-    #         if get_speaker_codes:
-    #             return fpaths, text_lengths, texts, speakers
-    #         else:  
-    #             return fpaths, text_lengths, texts
-    # elif mode=='validation':
-    #     #texts = [text for text in texts if len(text) <= hp.max_N]
-    #     stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
-    #     for i, text in enumerate(texts):
-    #         stacked_texts[i, :len(text)] = text
-    #     if get_speaker_codes:
-    #         return fpaths, stacked_texts, speakers
-    #     else:
-    #         return fpaths, stacked_texts
-    # else:
-    #     assert mode=='synthesis'
-    #     stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
-    #     for i, text in enumerate(texts):
-    #         stacked_texts[i, :len(text)] = text
-    #     return (fpaths, stacked_texts) ## fpaths only a way to get bases -- wav files probably do not exist
-
-def get_batch(hp, batchsize):
+def get_batch(hp, batchsize, dataset=None, data=None):
     """Loads training data and put them in queues"""
-    # print ('get_batch')
+    #import pdb;pdb.set_trace()
+    #print ('get_batch')
     with tf.device('/cpu:0'):
         # Load data
-        dataset = load_data(hp) 
+        if dataset is None:
+            #print('In get_batch: Load dataset')
+            dataset = load_data(hp) 
         fpaths, text_lengths, texts = dataset['fpaths'], dataset['text_lengths'], dataset['texts']
         label_lengths, audio_lengths = dataset['label_lengths'], dataset['audio_lengths'] ## might be []
 
@@ -349,7 +353,7 @@ def get_batch(hp, batchsize):
         if hp.use_external_durations:
             assert hp.random_reduction_on_the_fly ## The alternative is possible but not implemented.
 
-
+        #pdb.set_trace()
         ## TODO: tf.py_func deprecated. https://www.tensorflow.org/api_docs/python/tf/py_func
         if hp.random_reduction_on_the_fly:
 
@@ -441,11 +445,10 @@ def get_batch(hp, batchsize):
             else:
                 fname, mel, mag, _ = tf.py_func(_load_and_reduce_spectrograms, [fpath], [tf.string, tf.float32, tf.float32, tf.int16])
 
-
-
-
         elif hp.prepro:
+            #pdb.set_trace()
             def _load_spectrograms(fpath):
+                #print('Load mel, mag from disk')
                 try:
                     fname = os.path.basename(fpath)
                 except TypeError:
@@ -463,8 +466,37 @@ def get_batch(hp, batchsize):
                     print (mag)
                     print (np.load(mag).shape)
                 return fname, np.load(mel), np.load(mag)
+            
+            def _return_spectrograms(fpath):
+                #print('Return mel, mag already in memory')
+                try:
+                    fname = os.path.basename(fpath)
+                except TypeError:
+                    fname = os.path.basename(fpath.decode('utf-8'))
+                try:
+                    #mel = "{}/{}".format(hp.coarse_audio_dir, fname.replace("wav", "npy"))
+                    #mag = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
+                    mel=data['mel'][fname.split('.')[0]]
+                    mag=data['mag'][fname.split('.')[0]]
+                except TypeError:
+                    # in python 3, we have to do this because of this: https://docs.python.org/3/howto/pyporting.html#text-versus-binary-data
+                    #mel = "{}/{}".format(hp.coarse_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
+                    #mag = "{}/{}".format(hp.full_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
+                    mel=data['mel'][fname.decode('utf-8').split('.')[0]]
+                    mag=data['mag'][fname.decode('utf-8').split('.')[0]]
+                    #import pdb;pdb.set_trace()
 
-            fname, mel, mag = tf.py_func(_load_spectrograms, [fpath], [tf.string, tf.float32, tf.float32])
+                if 0:
+                    print ('mag file:')
+                    print (mag)
+                    print (mag.shape)
+                return fname, mel, mag
+            #pdb.set_trace()
+            if data is not None:
+                fname, mel, mag = tf.py_func(_return_spectrograms, [fpath], [tf.string, tf.float32, tf.float32])
+            else:
+                fname, mel, mag = tf.py_func(_load_spectrograms, [fpath], [tf.string, tf.float32, tf.float32])
+
         else:
             fname, mel, mag = tf.py_func(load_spectrograms, [fpath], [tf.string, tf.float32, tf.float32])  # (None, n_mels)
 

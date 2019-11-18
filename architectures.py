@@ -4,20 +4,36 @@
 Based on code by kyubyong park at https://www.github.com/kyubyong/dc_tts
 '''
 
-from data_load import get_batch, load_vocab
+from data_load import get_batch, load_vocab, load_data
 from networks import Audio2Emo, TextEnc, AudioEnc, AudioDec, Attention, SSRN, FixedAttention, LinearTransformLabels
 import tensorflow as tf
 from utils import get_global_attention_guide, learning_rate_decay
 import pdb
-
+import os
+import numpy as np
+from tqdm import tqdm
 class Graph(object):
-
-    def __init__(self, hp, mode="train", reuse=None):
+    def __init__(self, hp, mode="train", load_in_memory=True, reuse=None):
         assert mode in ['train', 'synthesize', 'generate_attention'] 
         self.mode = mode
         self.training = True if mode=="train" else False
         self.reuse = reuse
         self.hp = hp
+        self.load_in_memory=load_in_memory
+        
+        
+        if hp.prepro and mode=='train' and load_in_memory:
+            self.dataset = load_data(hp) 
+            mels={}
+            mags={}
+            fpaths = self.dataset['fpaths']
+            for fpath in tqdm(fpaths):
+                fn,mel,mag=self.load_spectrograms_in_memory(fpath, audio_extension=fpath.split('.')[-1])
+                mels[fn.split('.')[0]]=mel
+                mags[fn.split('.')[0]]=mag
+            self.data={}
+            self.data['mel']=mels
+            self.data['mag']=mags
 
         self.add_data(reuse=reuse)                     ## TODO: reuse?? 
         self.build_model()
@@ -25,6 +41,25 @@ class Graph(object):
             self.build_loss()
             self.build_training_scheme()
             
+
+    def load_spectrograms_in_memory(self, fpath, audio_extension='wav'):
+        try:
+            fname = os.path.basename(fpath)
+        except TypeError:
+            fname = os.path.basename(fpath.decode('utf-8'))
+        try:
+            mel = "{}/{}".format(self.hp.coarse_audio_dir, fname.replace(audio_extension, "npy"))
+            mag = "{}/{}".format(self.hp.full_audio_dir, fname.replace(audio_extension, "npy"))
+        except TypeError:
+            # in python 3, we have to do this because of this: https://docs.python.org/3/howto/pyporting.html#text-versus-binary-data
+            mel = "{}/{}".format(self.hp.coarse_audio_dir, fname.decode('utf-8').replace(audio_extension, "npy"))
+            mag = "{}/{}".format(self.hp.full_audio_dir, fname.decode('utf-8').replace(audio_extension, "npy"))
+        
+        if 0:
+            print ('mag file:')
+            print (mag)
+            print (np.load(mag).shape)
+        return fname, np.load(mel), np.load(mag)
 
     def add_data(self, reuse=None):
         '''
@@ -37,7 +72,12 @@ class Graph(object):
         hp = self.hp
 
         if self.mode is 'train':
-            batchdict = get_batch(hp, self.get_batchsize())
+            if not self.load_in_memory:
+                print('Data not loaded in memory, it will be read on disk')
+                batchdict = get_batch(hp, self.get_batchsize())
+            else:
+                print('Data loaded in memory, it will not be accessed later on disk')
+                batchdict = get_batch(hp, self.get_batchsize(), dataset=self.dataset, data=self.data)
 
             if 0: print (batchdict) ; print (batchdict.keys()) ; sys.exit('vsfbd')
 
@@ -369,6 +409,128 @@ class BabblerGraph(Graph):
         # summary used for reporting to tensorboard (kp)
         tf.summary.scalar('train/loss_mels', self.loss_mels)
         tf.summary.scalar('train/loss_bd', self.loss_bd)
+        tf.summary.image('train/mel_gt', tf.expand_dims(tf.transpose(self.mels[:1], [0, 2, 1]), -1))
+        tf.summary.image('train/mel_hat', tf.expand_dims(tf.transpose(self.Y[:1], [0, 2, 1]), -1))
+
+
+class Graph_style_unsupervised(Graph):
+    def get_batchsize(self):
+        return self.hp.batchsize['t2m'] ## TODO: naming?
+
+    def build_model(self):
+        # Get S or decoder inputs. (B, T//r, n_mels). This is audio shifted 1 frame to the right.
+        self.S = tf.concat((tf.zeros_like(self.mels[:, :1, :]), self.mels[:, :-1, :]), 1)
+        
+        # Build a latent representation of expressiveness, if we defined uee in config file (for unsupervised expressiveness embedding)
+        try:
+            if self.hp.uee!=0:
+                with tf.variable_scope("Audio2Emo"):
+                    with tf.variable_scope("AudioEnc"):
+                        self.emos = Audio2Emo(self.hp, self.S, training=self.training, speaker_codes=self.speakers, reuse=self.reuse) # (B, T/r, d=8)
+                        self.emo_mean = tf.reduce_mean(self.emos, 1)
+                        print(self.emo_mean.get_shape())
+                        self.emo_mean = tf.expand_dims(self.emo_mean,axis=1)
+                        print(self.emo_mean.get_shape())
+                        #pdb.set_trace()
+        except:
+            print('No unsupervised expressive embedding')
+            self.emo_mean=None
+            pdb.set_trace()
+        
+        with tf.variable_scope("Text2Mel"):
+            # Networks
+            if self.hp.text_encoder_type=='none': 
+                assert self.hp.merlin_label_dir
+                self.K = self.V = self.merlin_label
+            elif self.hp.text_encoder_type=='minimal_feedforward':
+                assert self.hp.merlin_label_dir
+                #sys.exit('Not implemented: hp.text_encoder_type=="minimal_feedforward"')
+                self.K = self.V = LinearTransformLabels(self.hp, self.merlin_label, training=self.training, reuse=self.reuse)
+            else: ## default DCTTS text encoder
+                with tf.variable_scope("TextEnc_emotional"):
+                    self.K, self.V = TextEnc(self.hp, self.L, training=self.training, emos=self.emo_mean, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)
+
+            with tf.variable_scope("AudioEnc"):
+                if self.hp.history_type in ['fractional_position_in_phone', 'absolute_position_in_phone']:
+                    self.Q = self.position_in_phone
+                elif self.hp.history_type == 'minimal_history':
+                    sys.exit('Not implemented: hp.history_type=="minimal_history"')
+                else:                
+                    assert self.hp.history_type == 'DCTTS_standard'
+                    self.Q = AudioEnc(self.hp, self.S, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)
+
+            with tf.variable_scope("Attention"):
+                # R: (B, T/r, 2d)
+                # alignments: (B, N, T/r)
+                # max_attentions: (B,)
+                if self.hp.use_external_durations:
+                    self.R, self.alignments, self.max_attentions = FixedAttention(self.hp, self.durations, self.Q, self.V)
+
+                elif self.mode is 'synthesize':
+                    self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
+                                                                            monotonic_attention=True,
+                                                                            prev_max_attentions=self.prev_max_attentions)
+                elif self.mode is 'train': 
+                    self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
+                                                                            monotonic_attention=False,
+                                                                            prev_max_attentions=self.prev_max_attentions)
+                elif self.mode is 'generate_attention': 
+                    self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
+                                                                            monotonic_attention=False,
+                                                                            prev_max_attentions=None)
+
+            with tf.variable_scope("AudioDec"):
+                self.Y_logits, self.Y = AudioDec(self.hp, self.R, training=self.training, speaker_codes=self.speakers, reuse=self.reuse) # (B, T/r, n_mels)
+
+    def build_loss(self):
+        hp = self.hp
+
+        ## L2 loss (new)
+        self.loss_l2 = tf.reduce_mean(tf.squared_difference(self.Y, self.mels))
+
+        # mel L1 loss
+        self.loss_mels = tf.reduce_mean(tf.abs(self.Y - self.mels))
+
+        # mel binary divergence loss
+        
+        self.loss_bd1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.mels))
+        if not hp.squash_output_t2m:   
+            self.loss_bd1 = tf.zeros_like(self.loss_bd1)
+            print("binary divergence loss disabled because squash_output_t2m==False")    
+
+        
+        # guided_attention loss
+        self.A = tf.pad(self.alignments, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=-1.)[:, :hp.max_N, :hp.max_T]
+        if hp.attention_guide_dir:
+            self.gts = tf.pad(self.gts, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=1.0)[:, :hp.max_N, :hp.max_T] ## TODO: check adding penalty here (1.0 is the right thing)               
+        self.attention_masks = tf.to_float(tf.not_equal(self.A, -1))
+        self.loss_att = tf.reduce_sum(tf.abs(self.A * self.gts) * self.attention_masks)    ## (B, Letters, Frames) * (Letters, Frames) -- Broadcasting first adds singleton dimensions to the left until rank is matched. 
+        self.mask_sum = tf.reduce_sum(self.attention_masks)
+        self.loss_att /= self.mask_sum
+
+        # total loss
+        try:  ## new way to configure loss weights:- TODO: ensure all configs use new pattern, and remove 'except' branch
+            # total loss, with 2 terms combined with loss weights:
+            self.loss = (hp.loss_weights['t2m']['L1'] * self.loss_mels) + \
+                        (hp.loss_weights['t2m']['binary_divergence'] * self.loss_bd1) +\
+                        (hp.loss_weights['t2m']['attention'] * self.loss_att) +\
+                        (hp.loss_weights['t2m']['L2'] * self.loss_l2)
+
+        except:
+            self.lw_mel = hp.lw_mel
+            self.lw_bd1 = hp.lw_bd1
+            self.lw_att = hp.lw_att     
+            self.lw_t2m_l2 = self.hp.lw_t2m_l2                    
+            self.loss = (self.lw_mel * self.loss_mels) + (self.lw_bd1 * self.loss_bd1) + (self.lw_att * self.loss_att) + (self.lw_t2m_l2 * self.loss_l2)
+
+        # loss_components attribute is used for reporting to log (osw)
+        self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att, self.loss_l2]
+
+
+        # summary used for reporting to tensorboard (kp)
+        tf.summary.scalar('train/loss_mels', self.loss_mels)
+        tf.summary.scalar('train/loss_bd1', self.loss_bd1)
+        tf.summary.scalar('train/loss_att', self.loss_att)
         tf.summary.image('train/mel_gt', tf.expand_dims(tf.transpose(self.mels[:1], [0, 2, 1]), -1))
         tf.summary.image('train/mel_hat', tf.expand_dims(tf.transpose(self.Y[:1], [0, 2, 1]), -1))
 
