@@ -16,7 +16,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
-from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
+from architectures import Text2MelGraph, SSRNGraph, BabblerGraph, Graph_style_unsupervised
 from data_load import load_data
 from synthesize import synth_text2mel, synth_mel2mag, split_batch, make_mel_batch, synth_codedtext2mel, get_text_lengths, encode_text, list2batch
 from objective_measures import compute_dtw_error, compute_simple_LSD
@@ -70,7 +70,7 @@ def main_work():
     # ============= Process command line ============
     a = ArgumentParser()
     a.add_argument('-c', dest='config', required=True, type=str)
-    a.add_argument('-m', dest='model_type', required=True, choices=['t2m', 'ssrn', 'babbler'])
+    a.add_argument('-m', dest='model_type', required=True, choices=['t2m', 'ssrn', 'babbler', 'unsup'])
     opts = a.parse_args()
     print('opts')
     print(opts)
@@ -112,7 +112,8 @@ def main_work():
 
     valid_filenames = np.array(valid_filenames)[v_indices]
     validation_mags = [np.load(hp.full_audio_dir + os.path.sep + basename(fpath)+'.npy') \
-                                for fpath in valid_filenames]                                
+                                for fpath in valid_filenames]  
+    #import pdb;pdb.set_trace()
     validation_text = validation_text[v_indices, :]
     validation_labels = None # default
     if hp.merlin_label_dir:
@@ -137,7 +138,7 @@ def main_work():
                         for dur in dataset['durations'][v_indices]]       
         position_in_phone_data = list2batch(position_in_phone_data, hp.max_T)
 
-    if model_type=='t2m':
+    if model_type=='t2m' or model_type=='unsup':
         validation_mels = [np.load(hp.coarse_audio_dir + os.path.sep + basename(fpath)+'.npy') \
                                     for fpath in valid_filenames]
         validation_inputs = validation_text
@@ -156,7 +157,7 @@ def main_work():
 
 
     ## Get the text and mel inputs for the utts you would like to plot attention graphs for 
-    if hp.plot_attention_every_n_epochs and model_type=='t2m': #check if we want to plot attention
+    if hp.plot_attention_every_n_epochs and (model_type=='t2m' or model_type=='unsup'): #check if we want to plot attention
         # TODO do we want to generate and plot attention for validation or training set sentences??? modify attention_inputs accordingly...
         attention_inputs = validation_text[:hp.num_sentences_to_plot_attention]
         attention_mels = validation_mels[:hp.num_sentences_to_plot_attention]
@@ -167,7 +168,7 @@ def main_work():
         attention_mels = attention_mels_array # rename for convenience
 
     ## Map to appropriate type of graph depending on model_type:
-    AppropriateGraph = {'t2m': Text2MelGraph, 'ssrn': SSRNGraph, 'babbler': BabblerGraph}[model_type]
+    AppropriateGraph = {'t2m': Text2MelGraph, 'ssrn': SSRNGraph, 'babbler': BabblerGraph, 'unsup':Graph_style_unsupervised}[model_type]
 
     g = AppropriateGraph(hp) ; info("Training graph loaded")
     synth_graph = AppropriateGraph(hp, mode='synthesize', reuse=True) ; info("Synthesis graph loaded") #reuse=True ensures that 'synth_graph' and 'attention_graph' share weights with training graph 'g'

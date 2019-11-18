@@ -23,7 +23,7 @@ from utils import plot_alignment
 from utils import spectrogram2wav, durations_to_position
 from utils import split_streams, magphase_synth_from_compressed 
 from data_load import load_data, text_to_phonetic
-from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
+from architectures import Text2MelGraph, SSRNGraph, BabblerGraph, Graph_style_unsupervised
 from libutil import safe_makedir, basename
 from configuration import load_config
 from concurrent.futures import ProcessPoolExecutor
@@ -309,19 +309,22 @@ def list2batch(inlist, pad_length):
 
 
 def restore_latest_model_parameters(sess, hp, model_type):
-    model_types = {  't2m': 'Text2Mel', 
+    # TODO: change this, it is very unclear. It is because unsup is a version of text2mel with unsupervised representation. but it is now also implemented in text2mel
+    model_types = { 't2m': 'Text2Mel', 
+                    'unsup': 'Text2Mel', 
                     'ssrn': 'SSRN', 
                     'babbler': 'Text2Mel',
-                    'extract_emo_code':'Text2Mel/Audio2Emo'
+                    'extract_emo_code_t2m':'Text2Mel/Audio2Emo',
+                    'extract_emo_code_unsup':'Audio2Emo/AudioEnc'
                   }  ## map model type to string used in scope
     scope = model_types[model_type]
-
+    #import pdb;pdb.set_trace()
     # if we want to extract emo code, in fact we use the t2m model. This variable is used after to go in the directory
     # TODO: This workaround is not very pretty and may lead to some misunderstanding later... I should do it another way
-    if model_type=='extract_emo_code':
+    if model_type=='extract_emo_code_t2m':
         model_type='t2m'
-    
-#    import pdb;pdb.set_trace()
+    elif model_type=='extract_emo_code_unsup':
+        model_type='unsup'
     var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
     saver = tf.train.Saver(var_list=var_list)
     savepath = hp.logdir + "-" + model_type
@@ -456,10 +459,10 @@ def synth_wave(hp, mag, outfile):
     elif hp.vocoder == 'world':
         world_synthesis(mag, outfile, hp)
 
-def extract_emo_code(hp, melfiles, g):
+def extract_emo_code(hp, melfiles, g, model_type='t2m'):
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
-        t2m_epoch = restore_latest_model_parameters(sess, hp, 'extract_emo_code')
+        t2m_epoch = restore_latest_model_parameters(sess, hp, 'extract_emo_code_'+model_type)
 
         codes=[]
         # TODO: group in batches of 32 and process by batch
@@ -475,13 +478,15 @@ def extract_emo_code(hp, melfiles, g):
     return codes
 
 class tts_model:
-    def __init__(self, hp, t2m_epoch=-1, ssrn_epoch=-1):
+    def __init__(self, hp, model_type='t2m', t2m_epoch=-1, ssrn_epoch=-1):
         self.t2m_epoch=t2m_epoch
         self.ssrn_epoch=ssrn_epoch
 
         self.hp=hp
-
-        self.g1 = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 (t2m) loaded")
+        if model_type=='t2m':
+            self.g1 = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 (t2m) loaded")
+        elif model_type=='unsup':
+            self.g1 = Graph_style_unsupervised(hp, mode="synthesize"); print("Graph 1 (unsup) loaded")
         self.g2 = SSRNGraph(hp, mode="synthesize"); print("Graph 2 (ssrn) loaded")
         self.sess = tf.Session()
 
@@ -491,15 +496,15 @@ class tts_model:
         ### TODO: t2m and ssrn from separate configs?
 
         if t2m_epoch > -1:
-            restore_archived_model_parameters(self.sess, hp, 't2m', t2m_epoch)
+            restore_archived_model_parameters(self.sess, hp, model_type, t2m_epoch)
         else:
-            self.t2m_epoch = restore_latest_model_parameters(self.sess, hp, 't2m')
+            self.t2m_epoch = restore_latest_model_parameters(self.sess, hp, model_type)
         if ssrn_epoch > -1:    
             restore_archived_model_parameters(self.sess, hp, 'ssrn', ssrn_epoch)
         else:
             self.ssrn_epoch = restore_latest_model_parameters(self.sess, hp, 'ssrn')
      
-    def synthesize(self, text=None, emo_code=None, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
+    def synthesize(self, text=None, emo_code=None, mels=None, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
         '''
         topoutdir: store samples under here; defaults to hp.sampledir
         t2m_epoch and ssrn_epoch: default -1 means use latest. Otherwise go to archived models.
@@ -563,6 +568,8 @@ class tts_model:
         ### TODO: after futher efficiency testing, remove this fork
         if 1:  ### efficient route -- only make K&V once  ## 3.86, 3.70, 3.80 seconds (2 sentences)
             text_lengths = get_text_lengths(L)
+            if mels is not None:
+                emo_code=encode_audio2emo(self.hp, mels, self.g1, self.sess)
             K, V = encode_text(self.hp, L, self.g1, self.sess, emo_mean=emo_code, speaker_data=speaker_data, labels=labels)
             Y, lengths, alignments = synth_codedtext2mel(self.hp, K, V, text_lengths, self.g1, self.sess, \
                                 speaker_data=speaker_data, duration_data=duration_data, \
