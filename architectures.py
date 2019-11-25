@@ -21,27 +21,26 @@ class Graph(object):
         self.hp = hp
         self.load_in_memory=load_in_memory
         
-        
-        if hp.prepro and mode=='train' and load_in_memory:
-            self.dataset = load_data(hp) 
-            mels={}
-            mags={}
-            fpaths = self.dataset['fpaths']
-            for fpath in tqdm(fpaths):
-                fn,mel,mag=self.load_spectrograms_in_memory(fpath, audio_extension=fpath.split('.')[-1])
-                mels[fn.split('.')[0]]=mel
-                mags[fn.split('.')[0]]=mag
-            self.data={}
-            self.data['mel']=mels
-            self.data['mag']=mags
-
-        self.add_data(reuse=reuse)                     ## TODO: reuse?? 
+        #self.add_data(reuse=reuse)                     ## TODO: reuse?? 
         self.build_model()
         if self.training:
             self.build_loss()
             self.build_training_scheme()
             
-
+    def load_data_in_memory(self, model='t2m'):
+        if self.hp.prepro and self.mode=='train' and self.load_in_memory:
+            self.dataset = load_data(self.hp) 
+            mels={}
+            if model=='ssrn': mags={}
+            fpaths = self.dataset['fpaths']
+            for fpath in tqdm(fpaths):
+                fn,mel,mag=self.load_spectrograms_in_memory(fpath, audio_extension=fpath.split('.')[-1])
+                mels[fn.split('.')[0]]=mel
+                if model=='ssrn': mags[fn.split('.')[0]]=mag
+            self.data={}
+            self.data['mel']=mels
+            if model=='ssrn': self.data['mag']=mags
+    
     def load_spectrograms_in_memory(self, fpath, audio_extension='wav'):
         try:
             fname = os.path.basename(fpath)
@@ -61,7 +60,7 @@ class Graph(object):
             print (np.load(mag).shape)
         return fname, np.load(mel), np.load(mag)
 
-    def add_data(self, reuse=None):
+    def add_data(self, reuse=None, model='t2m'):
         '''
         Add either variables (for training) or placeholders (for synthesis) to the graph
         '''
@@ -77,12 +76,15 @@ class Graph(object):
                 batchdict = get_batch(hp, self.get_batchsize())
             else:
                 print('Data loaded in memory, it will not be accessed later on disk')
-                batchdict = get_batch(hp, self.get_batchsize(), dataset=self.dataset, data=self.data)
+                batchdict = get_batch(hp, self.get_batchsize(), dataset=self.dataset, data=self.data, model=model)
 
             if 0: print (batchdict) ; print (batchdict.keys()) ; sys.exit('vsfbd')
 
-            self.L, self.mels, self.mags, self.fnames, self.num_batch = \
-                batchdict['text'], batchdict['mel'], batchdict['mag'], batchdict['fname'], batchdict['num_batch'] 
+            self.L, self.mels, self.fnames, self.num_batch = \
+                batchdict['text'], batchdict['mel'], batchdict['fname'], batchdict['num_batch'] 
+
+            if model=='ssrn':
+                self.mags=batchdict['mag']
 
             if hp.multispeaker:
                 ## check multispeaker config is valid:- TODO: to config validation?
@@ -173,11 +175,15 @@ class Graph(object):
 
 
 class SSRNGraph(Graph):
-
+    
     def get_batchsize(self):
         return self.hp.batchsize['ssrn']   ## TODO: naming?
 
     def build_model(self):
+        
+        self.load_data_in_memory(model='ssrn')
+        self.add_data(reuse=self.reuse, model='ssrn')
+
         with tf.variable_scope("SSRN"):
             ## OSW: use 'mels' for input both in training and synthesis -- can be either variable or placeholder 
             self.Z_logits, self.Z = SSRN(self.hp, self.mels, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)
@@ -227,6 +233,9 @@ class Text2MelGraph(Graph):
         return self.hp.batchsize['t2m'] ## TODO: naming?
 
     def build_model(self):
+        self.load_data_in_memory()
+        self.add_data(reuse=self.reuse)     
+
         with tf.variable_scope("Text2Mel"):
             # Get S or decoder inputs. (B, T//r, n_mels). This is audio shifted 1 frame to the right.
             self.S = tf.concat((tf.zeros_like(self.mels[:, :1, :]), self.mels[:, :-1, :]), 1)
@@ -348,6 +357,9 @@ class Text2MelGraph(Graph):
 class TextEncGraph(Graph):  ## partial graph for deployment only
 
     def build_model(self):
+        self.load_data_in_memory()
+        self.add_data(reuse=self.reuse)     
+
         with tf.variable_scope("Text2Mel"):
             # Get S or decoder inputs. (B, T//r, n_mels)
             self.S = tf.concat((tf.zeros_like(self.mels[:, :1, :]), self.mels[:, :-1, :]), 1)
@@ -372,6 +384,9 @@ class BabblerGraph(Graph):
         return self.hp.batchsize.get('babbler', 32) ## default = 32 
 
     def build_model(self):
+        self.load_data_in_memory()
+        self.add_data(reuse=self.reuse)     
+
         with tf.variable_scope("Text2Mel"): ## keep scope names consistent with full Text2Mel 
                                             ## to allow parameters to be reused more easily later
             # Get S or decoder inputs. (B, T//r, n_mels). This is audio shifted 1 frame to the right.
@@ -418,6 +433,9 @@ class Graph_style_unsupervised(Graph):
         return self.hp.batchsize['t2m'] ## TODO: naming?
 
     def build_model(self):
+        self.load_data_in_memory()
+        self.add_data(reuse=self.reuse)     
+
         # Get S or decoder inputs. (B, T//r, n_mels). This is audio shifted 1 frame to the right.
         self.S = tf.concat((tf.zeros_like(self.mels[:, :1, :]), self.mels[:, :-1, :]), 1)
         

@@ -84,7 +84,7 @@ def load_data(hp, mode="train", audio_extension='.wav'):
     get_speaker_codes = ( hp.multispeaker != []) ## False if hp.multispeaker is empty list
 
     dataset_df_path=os.path.join(hp.featuredir,'dataset_'+mode+'.csv')
-    # TODO: this does not work in train mode because of  problem with doinf pd.eval() with bytes, I think
+    # TODO: this does not work in train mode because of  problem with doing pd.eval() with bytes, I think
     if False: #os.path.exists(dataset_df_path):
         dataset_df=pd.read_csv(dataset_df_path)
         
@@ -297,6 +297,7 @@ def load_data(hp, mode="train", audio_extension='.wav'):
         try:
             if len(dataset_df['audio_lengths'])==0: dataset_df['audio_lengths']=[0]*len(dataset_df['texts'])                                                                                   
             if len(dataset_df['label_lengths'])==0: dataset_df['label_lengths']=[0]*len(dataset_df['texts'])  
+            if not os.path.exists(hp.featuredir): os.makedirs(hp.featuredir)
             pd.DataFrame.to_csv(pd.DataFrame.from_records(dataset_df), dataset_df_path) 
         except:
             import pdb;pdb.set_trace()
@@ -308,7 +309,7 @@ def load_data(hp, mode="train", audio_extension='.wav'):
         return dataset
 
 
-def get_batch(hp, batchsize, dataset=None, data=None):
+def get_batch(hp, batchsize, dataset=None, data=None, model='t2m'):
     """Loads training data and put them in queues"""
     #import pdb;pdb.set_trace()
     #print ('get_batch')
@@ -365,13 +366,13 @@ def get_batch(hp, batchsize, dataset=None, data=None):
                     fname = os.path.basename(fpath.decode('utf-8'))
                 try:
                     melfile = "{}/{}".format(hp.full_mel_dir, fname.replace("wav", "npy"))
-                    magfile = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
+                    if model=='ssrn': magfile = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
                 except TypeError:
                     # in python 3, we have to do this because of this: https://docs.python.org/3/howto/pyporting.html#text-versus-binary-data
                     melfile = "{}/{}".format(hp.full_mel_dir, fname.decode('utf-8').replace("wav", "npy"))
-                    magfile = "{}/{}".format(hp.full_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
+                    if model=='ssrn': magfile = "{}/{}".format(hp.full_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
                 mel = np.load(melfile)
-                mag = np.load(magfile)
+                if model=='ssrn': mag = np.load(magfile)
 
                 start = np.random.randint(0, hp.r, dtype=np.int16)
 
@@ -390,7 +391,9 @@ def get_batch(hp, batchsize, dataset=None, data=None):
                 # [ 3  7 11 15 19 23 27 31 35 39]
 
                 ### need to pad end of mag accordingly (and trim start) so that it matches:--
-                mag = np.pad(mag, [[0, start], [0, 0]], mode="constant")[start:,:]
+                if model=='ssrn': mag = np.pad(mag, [[0, start], [0, 0]], mode="constant")[start:,:]
+                else:
+                    mag=np.float32(0.0)
                 return fname, mel, mag, start
 
             ## Originally had these separate (see below) but couldn't find a 
@@ -455,16 +458,18 @@ def get_batch(hp, batchsize, dataset=None, data=None):
                     fname = os.path.basename(fpath.decode('utf-8'))
                 try:
                     mel = "{}/{}".format(hp.coarse_audio_dir, fname.replace("wav", "npy"))
-                    mag = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
+                    if model=='ssrn': mag = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
                 except TypeError:
                     # in python 3, we have to do this because of this: https://docs.python.org/3/howto/pyporting.html#text-versus-binary-data
                     mel = "{}/{}".format(hp.coarse_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
-                    mag = "{}/{}".format(hp.full_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
+                    if model=='ssrn': mag = "{}/{}".format(hp.full_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
                 
                 if 0:
-                    print ('mag file:')
-                    print (mag)
-                    print (np.load(mag).shape)
+                    if model=='ssrn': 
+                        print ('mag file:')
+                        print (mag)
+                        print (np.load(mag).shape)
+                if model!='ssrn': mag=np.float32(0.0)
                 return fname, np.load(mel), np.load(mag)
             
             def _return_spectrograms(fpath):
@@ -477,19 +482,21 @@ def get_batch(hp, batchsize, dataset=None, data=None):
                     #mel = "{}/{}".format(hp.coarse_audio_dir, fname.replace("wav", "npy"))
                     #mag = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
                     mel=data['mel'][fname.split('.')[0]]
-                    mag=data['mag'][fname.split('.')[0]]
+                    if model=='ssrn': mag=data['mag'][fname.split('.')[0]]
                 except TypeError:
                     # in python 3, we have to do this because of this: https://docs.python.org/3/howto/pyporting.html#text-versus-binary-data
                     #mel = "{}/{}".format(hp.coarse_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
                     #mag = "{}/{}".format(hp.full_audio_dir, fname.decode('utf-8').replace("wav", "npy"))
                     mel=data['mel'][fname.decode('utf-8').split('.')[0]]
-                    mag=data['mag'][fname.decode('utf-8').split('.')[0]]
+                    if model=='ssrn': mag=data['mag'][fname.decode('utf-8').split('.')[0]]
                     #import pdb;pdb.set_trace()
 
                 if 0:
-                    print ('mag file:')
-                    print (mag)
-                    print (mag.shape)
+                    if model=='ssrn': 
+                        print ('mag file:')
+                        print (mag)
+                        print (mag.shape)
+                if model!='ssrn': mag=np.float32(0.0)
                 return fname, mel, mag
             #pdb.set_trace()
             if data is not None:
@@ -554,11 +561,14 @@ def get_batch(hp, batchsize, dataset=None, data=None):
         elif 'position_in_phone' in hp.history_type:
             position_in_phone.set_shape((None, 1))  ## frames x 1D
         mel.set_shape((None, hp.n_mels))
-        mag.set_shape((None, hp.full_dim))
+        if model=='ssrn': mag.set_shape((None, hp.full_dim))
 
         # Batching
-        tensordict = {'text': text, 'mel': mel, 'mag': mag, 'fname': fname}
-        
+        if model=='ssrn': 
+            tensordict = {'text': text, 'mel': mel, 'mag': mag, 'fname': fname}
+        else:
+            tensordict = {'text': text, 'mel': mel, 'fname': fname}
+
         ## TODO: refactor to merge some of these blocks?
 
         if hp.multispeaker:
@@ -601,7 +611,4 @@ def get_batch(hp, batchsize, dataset=None, data=None):
 
         batched_tensor_dict['num_batch'] = num_batch        
         return batched_tensor_dict
-
-
-
 
