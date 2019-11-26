@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <title>ICE-TTS interface</title>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="googlebot" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="text/javascript" src="//code.jquery.com/jquery-1.8.3.js"></script>
+    <link rel="stylesheet" type="text/css" href="/css/normalize.css">
+    <link rel="stylesheet" type="text/css" href="/css/result-light.css">
+    <link rel="stylesheet" type="text/css" href="http://code.jquery.com/ui/1.9.2/themes/base/jquery-ui.css">
+    <script type="text/javascript" src="http://code.jquery.com/ui/1.9.2/jquery-ui.js"></script>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+</head>
+    <html>
+<body>
+    <div style="text-align: center" id="interface">
+      <h2>How would you quantigy the influence of an axis on the different parameters of tha table from 0 to 10 ?</h2>
+      <img src="/plot" id="myImg"/>
+      
+
+      <form>
+      <h2>Axis</h2>
+        <input type="radio" name="axis"  value="1" checked> 1
+        <input type="radio" name="axis" value="2"> 2
+        <input type="radio" name="axis" value="3"> 3
+        <input type="radio" name="axis" value="4"> 4  
+
+      <h2>Index</h2>
+        <input type="radio" name="index" value="0" checked> 0
+        <input type="radio" name="index" value="1"> 1
+        <input type="radio" name="index" value="2"> 2
+        <input type="radio" name="index" value="3"> 3
+        <input type="radio" name="index" value="4"> 4
+        <input type="radio" name="index" value="5"> 5
+        <input type="radio" name="index" value="6"> 6
+        <input type="radio" name="index" value="7"> 7
+        <input type="radio" name="index" value="8"> 8
+        <input type="radio" name="index" value="9"> 9
+        <input type="radio" name="index" value="10"> 10  
+
+      </form> 
+      <button id="submit-btn" class="btn btn-primary">Submit</button>
+  </div>
+
+  <div style="text-align: center" id="audioDiv">
+    <p id="message"></p>
+    <audio id="audio" controls autoplay hidden></audio>
+  </div>
+  <div style="text-align: center" id="name">
+  <input id="user" type="text" size="40" placeholder="Enter your name">
+  </div>
+<script>
+
+$(window).load(function(){
+        $(document).ready(function (event) {
+            //$('#myImg').draggable();
+            $('#submit-btn').on('click', function(event){
+                
+                q('#message').textContent = 'Synthesizing...'
+                  //q('#button').disabled = true
+                  q('#audio').hidden = true
+
+                  var axis=document.querySelector('input[name="axis"]:checked').value;
+                  var index=document.querySelector('input[name="index"]:checked').value;
+
+                  synthesize("#", axis, index)
+            });
+        });
+    });
+
+    function q(selector) {return document.querySelector(selector)}
+    
+    function synthesize(text, axis, index) {
+      fetch('/synthesizeSet?axis='+axis+ '&index='+index, {cache: 'no-cache'})
+        .then(function(res) {
+          if (!res.ok) throw Error(res.statusText)
+          return res.blob()
+        }).then(function(blob) {
+          q('#message').textContent = ''
+          //q('#button').disabled = false
+          q('#audio').src = URL.createObjectURL(blob)
+          q('#audio').hidden = false
+        }).catch(function(err) {
+          q('#message').textContent = 'Error: ' + err.message
+          //q('#button').disabled = false
+        })
+    }
+    
+</script>
+
+
+<div class="container">
+    <div id="table" class="table-editable">
+      <!--<span class="table-add glyphicon glyphicon-plus"></span> -->
+      <table class="table">
+        <tr>
+          <th>Adjective</th>
+          <th>Axis 1</th>
+          <th>Axis 2</th>
+          <th>Axis 3</th>
+          <th>Axis 4</th>
+        </tr>
+        <tr>
+          <td contenteditable="false">Arousal</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td>
+        </tr>
+        <tr>
+          <td contenteditable="false">Valence</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+        </tr>
+        <tr>
+          <td contenteditable="false">Pitch</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+        </tr>
+        <tr>
+          <td contenteditable="false">Voiced</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+        </tr>
+        <tr>
+          <td contenteditable="false">Tensed</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+        </tr>
+        <!-- This is our clonable table line -->
+        <tr class="hide">
+          <td contenteditable="true">Untitled</td>
+          <td contenteditable="true">undefined</td>
+          <td>
+        </tr>
+      </table>
+    </div>
+    
+    <button id="export-btn" class="btn btn-primary">Submit</button>
+    <p id="export"></p>
+  </div>
+  <script type="text/javascript" src="table_script.js"></script>
+
+</body>
+</html>

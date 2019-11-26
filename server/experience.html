@@ -1,0 +1,192 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <title>ICE-TTS interface</title>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="googlebot" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="text/javascript" src="//code.jquery.com/jquery-1.8.3.js"></script>
+    <link rel="stylesheet" type="text/css" href="/css/normalize.css">
+    <link rel="stylesheet" type="text/css" href="/css/result-light.css">
+    <link rel="stylesheet" type="text/css" href="http://code.jquery.com/ui/1.9.2/themes/base/jquery-ui.css">
+    <script type="text/javascript" src="http://code.jquery.com/ui/1.9.2/jquery-ui.js"></script>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+</head>
+    <html>
+<body>
+    <div style="text-align: center" id="interface">
+      <!--  <input id="text" type="text" size="40" placeholder="Enter Text"> -->
+      <!--   <button id="button" name="synthesize">Speak</button> -->
+      
+      
+      <!-- <div id="xRes">Top:<span></span></div> 
+      <div id="yRes">Left:<span></span></div>
+      <p id="demo"></p>
+      <p id="demo2"></p> -->
+      <img src="/plot" id="myImg"/>
+      
+  </div>
+
+  <div style="text-align: center" id="audioDiv">
+    <p id="message"></p>
+    <audio id="audio" controls autoplay hidden></audio>
+  </div>
+  <div style="text-align: center" id="name">
+  <input id="user" type="text" size="40" placeholder="Enter your name">
+  </div>
+<script>
+
+$(window).load(function(){
+        $(document).ready(function (event) {
+            //$('#myImg').draggable();
+            $('#myImg').on('click', function(event){
+                
+                var xRes = $('#xRes span');
+                var yRes = $('#yRes span');
+                
+                var image = $('img#myImg');
+                var img = document.getElementById('myImg');
+                var width = img.width        
+                var height = img.height
+                
+                xRes.html(image.offset().top);
+                yRes.html(image.offset().left);
+                
+                var x = event.clientX;
+                var y = event.clientY;
+            
+                //var coords = "X coords: " + x + ", Y coords: " + y;
+                //document.getElementById("demo").innerHTML = coords;
+                
+                var xRel=(x-image.offset().left)/width
+                var yRel=(y-image.offset().top)/height
+                //var coords2 = "X coords: " + xRel + ", Y coords: " + yRel;
+                  //  document.getElementById("demo2").innerHTML = coords2;
+                
+                /*text = q('#text').value.trim()
+
+                if (text) {
+                  q('#message').textContent = 'Synthesizing...'
+                  //q('#button').disabled = true
+                  q('#audio').hidden = true
+
+                  synthesize(text, xRel, yRel)
+                }else{
+                  q('#message').textContent = 'Synthesizing...'
+                  //q('#button').disabled = true
+                  q('#audio').hidden = true
+
+                  synthesize("#", xRel, yRel)
+                }*/
+                q('#message').textContent = 'Synthesizing...'
+                  //q('#button').disabled = true
+                  q('#audio').hidden = true
+
+                  synthesize("#", xRel, yRel)
+            });
+        });
+    });
+
+    function q(selector) {return document.querySelector(selector)}
+    q('#text').focus()
+    /*q('#button').addEventListener('click', function(e) {
+      text = q('#text').value.trim()
+      if (text) {
+        q('#message').textContent = 'Synthesizing...'
+        q('#button').disabled = true
+        q('#audio').hidden = true
+
+        synthesize(text)
+      }
+      e.preventDefault()
+      return false
+    })*/
+    function synthesize(text, x, y) {
+
+      fetch('/synthesize?text=' + encodeURIComponent(text) + '&x='+x+ '&y='+y, {cache: 'no-cache'})
+        .then(function(res) {
+          if (!res.ok) throw Error(res.statusText)
+          return res.blob()
+        }).then(function(blob) {
+          q('#message').textContent = ''
+          //q('#button').disabled = false
+          q('#audio').src = URL.createObjectURL(blob)
+          q('#audio').hidden = false
+        }).catch(function(err) {
+          q('#message').textContent = 'Error: ' + err.message
+          //q('#button').disabled = false
+        })
+    }
+    
+</script>
+
+
+
+
+
+<div class="container">
+    <div id="table" class="table-editable">
+      <!--<span class="table-add glyphicon glyphicon-plus"></span> -->
+      <table class="table">
+        <tr>
+          <th>Adjective</th>
+          <th>Axis 1</th>
+          <th>Axis 2</th>
+          <th>Axis 3</th>
+          <th>Axis 4</th>
+        </tr>
+        <tr>
+          <td contenteditable="false">Arousal</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td>
+        </tr>
+        <tr>
+          <td contenteditable="false">Valence</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+        </tr>
+        <tr>
+          <td contenteditable="false">Pitch</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+        </tr>
+        <tr>
+          <td contenteditable="false">Voiced</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+        </tr>
+        <tr>
+          <td contenteditable="false">Tensed</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+        </tr>
+        <!-- This is our clonable table line -->
+        <tr class="hide">
+          <td contenteditable="true">Untitled</td>
+          <td contenteditable="true">undefined</td>
+          <td>
+        </tr>
+      </table>
+    </div>
+    
+    <button id="export-btn" class="btn btn-primary">Submit</button>
+    <p id="export"></p>
+  </div>
+  <script type="text/javascript" src="table_script.js"></script>
+
+</body>
+</html>
