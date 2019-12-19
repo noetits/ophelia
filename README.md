@@ -1,7 +1,7 @@
 # ICE-Talk
 
 ICE-Talk is an Interface for a Controllable Expressive Talking Machine. 
-It is an web-based GUI that allows the use of a TTS system with controllable parameters via a text field and a clickable 2D plot. It enables the study of latent spaces for controllable TTS.
+It is a web-based GUI that allows the use of a TTS system with controllable parameters via a text field and a clickable 2D plot. It enables the study of latent spaces for controllable TTS.
 
 [![Alt text](https://img.youtube.com/vi/TT4jGWzfMIs/0.jpg)](https://www.youtube.com/watch?v=TT4jGWzfMIs)
 
