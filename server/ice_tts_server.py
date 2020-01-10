@@ -6,6 +6,7 @@ import scipy
 import io
 import json
 import pandas as pd
+import os
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -14,7 +15,6 @@ from data_load import load_data
 from datetime import datetime
 
 from synthesize import tts_model
-from synthesize_with_latent_space import scatter_plot
 from wsgiref import simple_server
 
 class SurveyResource(object):
@@ -44,6 +44,17 @@ class WebResource:
         with open (self.web_path, "r") as myfile:
             html_body=myfile.read()
         res.body = html_body
+
+class ImgResource:
+    def __init__(self,  path_to_img='server/CLICK_BU_POS_RVB.png'):
+        self.path_to_img=path_to_img
+        self.ext=path_to_img.split('.')[-1]
+    def on_get(self, req, res):
+        img=plt.imread(self.path_to_img)
+        out = io.BytesIO()
+        plt.imsave(out, img)
+        res.data = out.getvalue()
+        res.content_type = 'image/'+self.ext
 
 class PlotResource:
     def __init__(self,  hp, plot_data, codes, emo_cats=None, n_polar_axes=0):
@@ -80,12 +91,22 @@ class PlotResource:
             # this corresponds do the extreme right of the plot.
             r=self.ax.viewLim._points[1,0]
 
+            graduations=np.arange(11)/10*r*2-r
+
             for i,t in enumerate(theta):
-                x=r*np.cos(theta)
-                y=r*np.sin(theta)
+                x=r*np.cos(t)
+                y=r*np.sin(t)
                 self.ax.plot([-x,x], [-y,y], color='r', linewidth=3)
-                #self.ax.text(x,y,str(i))
-            
+                self.ax.annotate(str(i+1),(x*1.1,y*1.1), fontsize=14, fontweight='bold')
+
+                for j,g in enumerate(graduations):
+                    gx=g*np.cos(t)
+                    gy=g*np.sin(t)
+                    self.ax.scatter(gx, gy, color='tab:gray')
+                    self.ax.annotate(str(j),(gx,gy), fontsize=11)
+                
+
+            #import pdb;pdb.set_trace()
         #self.ax.scatter(matrice[:,0], matrice[:,1])
         #plt.show()
         self.fig.savefig('server/plot.png')
@@ -116,6 +137,7 @@ from scipy.spatial import distance
 def closest_node(node, nodes):
     closest_index = distance.cdist([node], nodes).argmin()
     return closest_index
+
 class SynthesisResource:
     def __init__(self, hp, plot_data, codes, plotRes, model_type='t2m', default_text='The birch canoe slid on the smooth planks.'):
         self.hp=hp
@@ -124,7 +146,6 @@ class SynthesisResource:
         self.codes=codes
         self.plotRes=plotRes
         self.default_text=default_text
-
 
         self.data_box=self.plotRes.ax.viewLim._points
         self.rel_box=self.plotRes.ax.figbox._points
@@ -150,21 +171,22 @@ class SynthesisResource:
         print(xRel)
         print(yRel)
         
-
         xData=map_range(xRel, self.rel_box[0,0], self.rel_box[1,0], self.data_box[0,0], self.data_box[1,0])
         yData=map_range(1-yRel, self.rel_box[0,1], self.rel_box[1,1], self.data_box[0,1], self.data_box[1,1])
         print('xData and yData:')
         print(xData)
         print(yData)
 
-        #idx=0
         idx=closest_node(np.array([xData,yData]), self.plot_data)
         print(self.codes[idx,:])
-        code=np.array([np.array([self.codes[idx,:]])])
+        code=np.array([self.codes[idx,:]])
         sentence=req.params.get('text')
         if sentence=="#":
             sentence=self.default_text
-        self.tts.synthesize(text=sentence, emo_code=code)
+        try:
+            self.tts.synthesize(text=sentence, emo_code=code)
+        except ValueError:
+            self.tts.synthesize(text=sentence, emo_code=np.array([code]))
 
         print(self.tts.outdir)
         wav, samplerate = sf.read(self.tts.outdir+'/test.wav')
@@ -229,10 +251,22 @@ class SynthesizeSet:
         sentence=self.default_text
         print("sentence:")
         print(sentence)
-        self.tts.synthesize(text=sentence, emo_code=code)
+
+
+        #id=sentence+str(code)
+        id='_'.join(sentence.split(' '))+str(idx)
+
+        # Here I want to synthesize only if it was not synthesized and saved beofre.
+        # But the attribute outdir is created only after going through the synthesis function. So I have to try to see if it exists
+        # if it does, I check if the wav file exists, and if not synthesize
+        try:
+            if not os.path.exists(os.path.join(self.tts.outdir,id+'.wav')):
+                self.tts.synthesize(text=sentence, emo_code=code, id=id)
+        except:
+            self.tts.synthesize(text=sentence, emo_code=code, id=id)
 
         print(self.tts.outdir)
-        wav, samplerate = sf.read(self.tts.outdir+'/test.wav')
+        wav, samplerate = sf.read(os.path.join(self.tts.outdir,id+'.wav'))
 
         out = io.BytesIO()
         wav *= 32767 / max(0.01, np.max(np.abs(wav)))
@@ -246,13 +280,17 @@ class ICE_TTS_server:
     def __init__(self, hp, plot_data, codes, emo_cats=None, n_polar_axes=0, model_type='t2m', port=5000, parent=None):
         self.api = falcon.API()
         plotRes=PlotResource(hp, plot_data, codes, emo_cats, n_polar_axes)
+        clickImg=ImgResource()
+        #federImg=ImgResource('server/logo_FEDER+wallonie.jpg')
         #SynthesizeSet(hp, plot_data, codes, plotRes, model_type=model_type)
         #import pdb;pdb.set_trace()
-        #self.api.add_route('/synthesize', SynthesisResource(hp, plot_data, codes, plotRes, model_type=model_type))
-        self.api.add_route('/synthesizeSet', SynthesizeSet(hp, plot_data, codes, plotRes, model_type=model_type))
         self.api.add_route('/plot', plotRes)
-        self.api.add_route('/', WebResource("server/experience_restricted.html"))
-        #self.api.add_route('/', WebResource("server/experience.html"))
+        
+        #self.api.add_route('/synthesizeSet', SynthesizeSet(hp, plot_data, codes, plotRes, model_type=model_type))
+        #self.api.add_route('/', WebResource("server/experience_restricted.html"))
+        self.api.add_route('/synthesize', SynthesisResource(hp, plot_data, codes, plotRes, model_type=model_type))
+        self.api.add_route('/', WebResource("server/web_page.html"))
+
         self.api.add_route('/table_script.js', WebResource("server/table_script.js"))
         self.api.add_route('/survey', SurveyResource())
         self.port=port
