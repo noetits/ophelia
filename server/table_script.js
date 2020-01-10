@@ -34,6 +34,6 @@ $BTN.click(function () {
 
   data.push($USER.val());
   $.post('/survey', JSON.stringify(data));
-  $EXPORT.text(JSON.stringify(data));
+  //$EXPORT.text(JSON.stringify(data));
   
 });

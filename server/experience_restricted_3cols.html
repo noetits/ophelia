@@ -17,16 +17,7 @@
     <html>
 <body>
     <div style="text-align: center" id="interface">
-      <!--<h2>How would you quantify the influence of an axis on the different parameters of the table from 0 to 10 ?</h2>-->
-      <h2>Perception experiment</h2>
-      <div style="text-align: left" id="decription">
-      Please follow the instructions below: <br>
-      -Pick an axis in the radio buttons below (under "Axis")  <br>
-      -Then pick a value on this axis by clicking on a radio button below "Graduations". Go from 0 to 10 then from 10 to 0 as many times as you wish. <br>
-      -For each graduation value, you will hear a sentence. <br>
-      -Then, in the table below, for each axis, say how much is each of the voice descriptors affected, if at all, as you move on the axis (0 = not affected at all, 10= extremely affected).  <br>
-      -And say if it moves up or down as the graduations go from 0 to 10, by indication respectively +1 or -1.
-      </div>
+      <h2>How would you quantify the influence of an axis on the different parameters of the table from 0 to 10 ?</h2>
       <img src="/plot" id="myImg"/>
       
       <form>
@@ -104,18 +95,26 @@ $(window).load(function(){
       <table class="table">
         <tr>
           <th>Adjective</th>
-          <th>Axis 1 - score</th>
-          <th>Axis 1 - up/down (+1/-1)</th>
-          <th>Axis 2 - score</th>
-          <th>Axis 2 - up/down (+1/-1)</th>
-          <th>Axis 3 - score</th>
-          <th>Axis 3 - up/down (+1/-1)</th>
-          <th>Axis 4 - score</th>
-          <th>Axis 4 - up/down (+1/-1)</th>
+          <th>Axis 1 - increasing</th>
+          <th>Axis 1 - decreasing</th>
+          <th>Axis 1 - in general</th>
+          <th>Axis 2 - increasing</th>
+          <th>Axis 2 - decreasing</th>
+          <th>Axis 2 - in general</th>
+          <th>Axis 3 - increasing</th>
+          <th>Axis 3 - decreasing</th>
+          <th>Axis 3 - in general</th>
+          <th>Axis 4 - increasing</th>
+          <th>Axis 4 - decreasing</th>
+          <th>Axis 4 - in general</th>
         </tr>
         
         <tr>
-          <td contenteditable="false">Pitch</td>
+          <td contenteditable="false">Deep/high pitched voice</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
@@ -136,10 +135,18 @@ $(window).load(function(){
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
           <td>
         </tr>
         <tr>
-          <td contenteditable="false">Loud</td>
+          <td contenteditable="false">Loud/low</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
@@ -160,10 +167,18 @@ $(window).load(function(){
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
           <td>
         </tr>
         <tr>
           <td contenteditable="false">Tension</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
@@ -184,6 +199,10 @@ $(window).load(function(){
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
           <td>
         </tr>
         <tr>
@@ -196,10 +215,18 @@ $(window).load(function(){
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
           <td>
         </tr>
         <tr>
-          <td contenteditable="false">Pleasant</td>
+          <td contenteditable="false">Pleasant/unpleasant</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
@@ -220,10 +247,14 @@ $(window).load(function(){
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
           <td>
         </tr>
         <tr>
-          <td contenteditable="false">Dynamic</td>
+          <td contenteditable="false">Calm/dynamic</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
@@ -232,6 +263,17 @@ $(window).load(function(){
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
           <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td contenteditable="true">0</td>
+          <td>
+        </tr>
+
+        <!-- This is our clonable table line -->
+        <tr class="hide">
+          <td contenteditable="true">Untitled</td>
+          <td contenteditable="true">undefined</td>
           <td>
         </tr>
       </table>
@@ -241,12 +283,6 @@ $(window).load(function(){
     <p id="export"></p>
   </div>
   <script type="text/javascript" src="table_script.js"></script>
-  <div style="text-align: center" id="interface">
-  creaky voice example: <br>
-  <iframe width="560" height="315" src="https://www.youtube.com/embed/Ff1JByylQU0?start=17" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe><br>
-  Valence and Arousal: <br>
-  <img src="https://www.researchgate.net/profile/Lung-Hao_Lee/publication/304124018/figure/fig1/AS:374864755085312@1466386130906/Two-dimensional-valence-arousal-space.png" id="valence_arousal" height="400"/>
-  
-</div>
+
 </body>
 </html>
