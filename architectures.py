@@ -4,14 +4,16 @@
 Based on code by kyubyong park at https://www.github.com/kyubyong/dc_tts
 '''
 
-from data_load import get_batch, load_vocab, load_data
-from networks import Audio2Emo, TextEnc, AudioEnc, AudioDec, Attention, SSRN, FixedAttention, LinearTransformLabels
+from data_load import get_batch, get_batch_postGL, load_vocab, load_data
+from networks import Audio2Emo, TextEnc, AudioEnc, AudioDec, Attention, Attention_reparametrized, SSRN, FixedAttention, LinearTransformLabels, PostGL, VAE, vae_weight
 import tensorflow as tf
 from utils import get_global_attention_guide, learning_rate_decay
 import pdb
 import os
 import numpy as np
 from tqdm import tqdm
+import librosa
+
 class Graph(object):
     def __init__(self, hp, mode="train", load_in_memory=True, reuse=None):
         assert mode in ['train', 'synthesize', 'generate_attention'] 
@@ -24,6 +26,7 @@ class Graph(object):
         #self.add_data(reuse=reuse)                     ## TODO: reuse?? 
         self.build_model()
         if self.training:
+            self.global_step = tf.Variable(0, name='global_step', trainable=False)
             self.build_loss()
             self.build_training_scheme()
             
@@ -59,6 +62,25 @@ class Graph(object):
             print (mag)
             print (np.load(mag).shape)
         return fname, np.load(mel), np.load(mag)
+    
+    def load_wavs_in_memory(self, fpath, audio_extension='wav'):
+        try:
+            fname = os.path.basename(fpath)
+        except TypeError:
+            fname = os.path.basename(fpath.decode('utf-8'))
+        try:
+            wav = fpath
+            wav_GL = "{}/{}".format(self.hp.wav_GL_dir, fname)
+        except TypeError:
+            # in python 3, we have to do this because of this: https://docs.python.org/3/howto/pyporting.html#text-versus-binary-data
+            wav = fpath.decode('utf-8')
+            wav_GL = "{}/{}".format(self.hp.wav_GL_dir, fname.decode('utf-8'))
+        
+        if 0:
+            print ('mag file:')
+            print (mag)
+            print (np.load(mag).shape)
+        return fname, librosa.load(wav)[0], librosa.load(wav_GL)[0]
 
     def add_data(self, reuse=None, model='t2m'):
         '''
@@ -135,7 +157,6 @@ class Graph(object):
                 self.position_in_phone = tf.placeholder(tf.float32, shape=(None, None, 1))                                                
             self.mels = tf.placeholder(tf.float32, shape=(None, None, hp.n_mels))
             
-
     def build_training_scheme(self):
         '''
         hp.update_weights: list of strings of regular expressions used to match
@@ -144,7 +165,6 @@ class Graph(object):
         '''
 
         hp = self.hp
-        self.global_step = tf.Variable(0, name='global_step', trainable=False)
         if hp.decay_lr:
             self.lr = learning_rate_decay(hp.lr, self.global_step)
         else:
@@ -226,7 +246,6 @@ class SSRNGraph(Graph):
         tf.summary.image('train/mag_hat', tf.expand_dims(tf.transpose(self.Z[:1], [0, 2, 1]), -1))
 
 
-
 class Text2MelGraph(Graph):
 
     def get_batchsize(self):
@@ -251,22 +270,36 @@ class Text2MelGraph(Graph):
             else: ## default DCTTS text encoder
 
             # Build a latent representation of expressiveness, if we defined uee in config file (for unsupervised expressiveness embedding)
-                try:
-                    if self.hp.uee!=0:
-                        with tf.variable_scope("Audio2Emo"):
-                            self.emos = Audio2Emo(self.hp, self.S, training=self.training, speaker_codes=self.speakers, reuse=self.reuse) # (B, T/r, d=8)
-                            self.emo_mean = tf.reduce_mean(self.emos, 1)
+                #try:
+                if self.hp.uee!=0:
+                    with tf.variable_scope("Audio2Emo"):
+                        self.emos = Audio2Emo(self.hp, self.S, training=self.training, speaker_codes=self.speakers, reuse=self.reuse) # (B, T/r, d=8)
+                        self.emo_mean = tf.reduce_mean(self.emos, 1)
+                        if self.hp.use_vae:
+                            self.emo_mean_sampled, mu, log_var = VAE(
+                                inputs=self.emo_mean,
+                                num_units=self.hp.vae_dim,
+                                scope='vae',
+                                reuse=self.reuse)
+                            #import pdb;pdb.set_trace()
+                            self.mu = mu
+                            self.log_var = log_var
+
+                            print(self.emo_mean_sampled.get_shape())
+                            self.emo_mean_expanded = tf.expand_dims(self.emo_mean_sampled,axis=1)
+                            print(self.emo_mean_expanded.get_shape())
+                        else:
                             print(self.emo_mean.get_shape())
-                            self.emo_mean = tf.expand_dims(self.emo_mean,axis=1)
-                            print(self.emo_mean.get_shape())
-                            #pdb.set_trace()
-                except:
+                            self.emo_mean_expanded = tf.expand_dims(self.emo_mean,axis=1)
+                            print(self.emo_mean_expanded.get_shape())
+                        #pdb.set_trace()
+                else:
                     print('No unsupervised expressive embedding')
                     self.emo_mean=None
                     #pdb.set_trace()
 
                 with tf.variable_scope("TextEnc"):
-                    self.K, self.V = TextEnc(self.hp, self.L, training=self.training, emos=self.emo_mean, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)
+                    self.K, self.V = TextEnc(self.hp, self.L, training=self.training, emos=self.emo_mean_expanded, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)
 
             with tf.variable_scope("AudioEnc"):
                 if self.hp.history_type in ['fractional_position_in_phone', 'absolute_position_in_phone']:
@@ -281,19 +314,24 @@ class Text2MelGraph(Graph):
                 # R: (B, T/r, 2d)
                 # alignments: (B, N, T/r)
                 # max_attentions: (B,)
+                if not self.hp.attention_reparam:
+                    AppropriateAttention=Attention
+                else:
+                    AppropriateAttention=Attention_reparametrized
+                
                 if self.hp.use_external_durations:
                     self.R, self.alignments, self.max_attentions = FixedAttention(self.hp, self.durations, self.Q, self.V)
 
                 elif self.mode is 'synthesize':
-                    self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
+                    self.R, self.alignments, self.max_attentions = AppropriateAttention(self.hp, self.Q, self.K, self.V,
                                                                             monotonic_attention=True,
                                                                             prev_max_attentions=self.prev_max_attentions)
                 elif self.mode is 'train': 
-                    self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
+                    self.R, self.alignments, self.max_attentions = AppropriateAttention(self.hp, self.Q, self.K, self.V,
                                                                             monotonic_attention=False,
                                                                             prev_max_attentions=self.prev_max_attentions)
                 elif self.mode is 'generate_attention': 
-                    self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
+                    self.R, self.alignments, self.max_attentions = AppropriateAttention(self.hp, self.Q, self.K, self.V,
                                                                             monotonic_attention=False,
                                                                             prev_max_attentions=None)
 
@@ -333,22 +371,33 @@ class Text2MelGraph(Graph):
                         (hp.loss_weights['t2m']['binary_divergence'] * self.loss_bd1) +\
                         (hp.loss_weights['t2m']['attention'] * self.loss_att) +\
                         (hp.loss_weights['t2m']['L2'] * self.loss_l2)
+            
 
         except:
             self.lw_mel = hp.lw_mel
             self.lw_bd1 = hp.lw_bd1
-            self.lw_att = hp.lw_att     
-            self.lw_t2m_l2 = self.hp.lw_t2m_l2                    
+            self.lw_att = hp.lw_att
+            self.lw_t2m_l2 = self.hp.lw_t2m_l2
             self.loss = (self.lw_mel * self.loss_mels) + (self.lw_bd1 * self.loss_bd1) + (self.lw_att * self.loss_att) + (self.lw_t2m_l2 * self.loss_l2)
 
-        # loss_components attribute is used for reporting to log (osw)
-        self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att, self.loss_l2]
+        #import pdb;pdb.set_trace()
+        if self.hp.use_vae and self.hp.if_vae_use_loss:
+            self.ki_loss = -0.5 * tf.reduce_sum(1 + self.log_var - tf.pow(self.mu, 2) - tf.exp(self.log_var))
+            self.vae_loss_weight = vae_weight(hp, self.global_step)
+            self.loss += self.ki_loss * self.vae_loss_weight
+
+            # loss_components attribute is used for reporting to log (osw)
+            self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att, self.loss_l2, self.ki_loss]
+        else:
+            # loss_components attribute is used for reporting to log (osw)
+            self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att, self.loss_l2]
 
 
         # summary used for reporting to tensorboard (kp)
         tf.summary.scalar('train/loss_mels', self.loss_mels)
         tf.summary.scalar('train/loss_bd1', self.loss_bd1)
         tf.summary.scalar('train/loss_att', self.loss_att)
+        if self.hp.use_vae and self.hp.if_vae_use_loss: tf.summary.scalar('train/ki_loss', self.ki_loss)
         tf.summary.image('train/mel_gt', tf.expand_dims(tf.transpose(self.mels[:1], [0, 2, 1]), -1))
         tf.summary.image('train/mel_hat', tf.expand_dims(tf.transpose(self.Y[:1], [0, 2, 1]), -1))
 

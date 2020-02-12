@@ -296,6 +296,45 @@ def Attention(hp, Q, K, V, monotonic_attention=False, prev_max_attentions=None):
 
     return R, alignments, max_attentions
 
+# TODO: test to reparametrize the Attention matrix as a list of steps
+def Attention_reparametrized(hp, Q, K, V, monotonic_attention=False, prev_max_attentions=None):
+    '''
+    Args:
+      Q: Queries. (B, T/r, d)
+      K: Keys. (B, N, d)
+      V: Values. (B, N, d)
+      monotonic_attention: A boolean. At training, it is False.
+      prev_max_attentions: (B,). At training, it is set to None.
+
+    Returns:
+      R: [Context Vectors; Q]. (B, T/r, 2d)
+      alignments: (B, N, T/r)
+      max_attentions: (B, T/r)
+    '''
+    A = tf.matmul(Q, K, transpose_b=True) * tf.rsqrt(tf.to_float(hp.d)) # (B, T/r, N), I suppose ?
+    
+    v=tf.reduce_mean(A, axis=2) # (B, T/r) ?
+    v=tf.math.sigmoid(v)*4-1
+    v=tf.cast(v, dtype=tf.int32)
+    v=tf.cumsum(v, axis=1)
+
+    depth=tf.shape(V)[1] # depth is N
+    A=tf.one_hot(v, depth) # (B, T/r, N) ?
+    #A=tf.transpose(A, [0, 2, 1]) # (B, T/r, N) ?
+    
+    #A = tf.nn.softmax(A) # (B, T/r, N)
+    max_attentions = tf.argmax(A, -1)  # (B, T/r)
+    R = tf.matmul(A, V)
+    if hp.concatenate_query:
+        print ('Concatenate R & Q -> R prime')
+        R = tf.concat((R, Q), -1)
+    else:
+        print ('Do ***not*** concatenate R & Q -> R prime')
+
+    alignments = tf.transpose(A, [0, 2, 1]) # (B, N, T/r)
+
+    return R, alignments, max_attentions
+
 def FixedAttention(hp, duration_matrix, Q, V):
     '''
     Implement upsampling according to external duration model via an attention-like
@@ -508,6 +547,42 @@ def SSRN(hp, Y, training=True, speaker_codes=None, reuse=None):
         Z = logits
     return logits, Z
 
+# this function is adapted from https://github.com/rishikksh20/vae_tacotron2
+def VAE(inputs, num_units=32, scope='vae', reuse=None):
+    with tf.variable_scope(scope):
+        mu = tf.layers.dense(inputs, num_units, name='mean', reuse=reuse)
+        log_var = tf.layers.dense(inputs, num_units, name='vari', reuse=reuse)
+        std = tf.exp(log_var)
+        z = tf.random_normal(shape=[tf.shape(mu)[0], num_units], mean=0.0, stddev=1.0)
+        output = mu + z * std
+        return output, mu, log_var
+
+def vae_weight(hp, global_step):
+    warm_up_step = hp.vae_warming_up
+
+    warm_up_step=tf.reshape(warm_up_step, [])
+    global_step=tf.reshape(global_step, [])
+
+    w1 = tf.cond(
+       global_step < warm_up_step,
+       lambda: tf.cond(
+            global_step % 100 < 1,
+            lambda: tf.convert_to_tensor(hp.init_vae_weights) + tf.cast(global_step / 100  * hp.vae_weight_multiler, tf.float32),
+            lambda: tf.cast(tf.convert_to_tensor(0), tf.float32)
+         ),
+       lambda: tf.cast(tf.convert_to_tensor(0), tf.float32)
+    )
+      
+    w2 = tf.cond(
+       global_step > warm_up_step,
+       lambda: tf.cond(
+             global_step % 400 < 1,
+             lambda: tf.convert_to_tensor(hp.init_vae_weights) + tf.cast((global_step - warm_up_step) / 400 * hp.vae_weight_multiler + warm_up_step / 100 * hp.vae_weight_multiler, tf.float32),
+             lambda: tf.cast(tf.convert_to_tensor(0), tf.float32)
+         ),
+       lambda: tf.cast(tf.convert_to_tensor(0), tf.float32)
+    )             
+    return tf.reshape(tf.maximum(w1, w2), [])
 
 def LinearTransformLabels(hp, L, training=True, reuse=None):
     '''
