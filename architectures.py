@@ -4,8 +4,8 @@
 Based on code by kyubyong park at https://www.github.com/kyubyong/dc_tts
 '''
 
-from data_load import get_batch, get_batch_postGL, load_vocab, load_data
-from networks import Audio2Emo, TextEnc, AudioEnc, AudioDec, Attention, Attention_reparametrized, SSRN, FixedAttention, LinearTransformLabels, PostGL, VAE, vae_weight
+from data_load import get_batch, load_vocab, load_data
+from networks import Audio2Emo, TextEnc, AudioEnc, AudioDec, Attention, Attention_reparametrized, SSRN, FixedAttention, LinearTransformLabels, VAE, vae_weight
 import tensorflow as tf
 from utils import get_global_attention_guide, learning_rate_decay
 import pdb
