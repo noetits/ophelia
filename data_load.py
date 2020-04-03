@@ -17,6 +17,7 @@ import sys
 
 import numpy as np
 import tensorflow as tf
+import librosa
 
 from libutil import basename, read_floats_from_8bit
 from utils import load_spectrograms, end_pad_for_reduction_shape_sync, \
@@ -25,6 +26,7 @@ from utils import load_spectrograms, end_pad_for_reduction_shape_sync, \
 
 from tqdm import tqdm
 import pandas as pd
+import ast
 
 def load_vocab(hp):
     vocab = hp.vocab # default
@@ -57,12 +59,13 @@ def phones_normalize(text, char2idx, speaker_code=''):
             sys.exit('Phone %s not listed in phone set'%(phone))
     return phones
 
-def text_to_phonetic(text='Hello world', festival_cmd='festival'):
+def text_to_phonetic(text='Hello world', festival_cmd='festival', id='test'):
+    #import pdb;pdb.set_trace()
     import os
     if not os.path.exists('demo/'): os.makedirs('demo/')
     os.chdir('demo/')
     with open("utts.data", "w") as text_file:
-        utt='(test "'+text+'")'
+        utt='('+id+' "'+text+'")'
         text_file.write(utt)
     SCRIPT="../script/festival/make_rich_phones_cmulex.scm"
 
@@ -77,20 +80,30 @@ def text_to_phonetic(text='Hello world', festival_cmd='festival'):
 def load_data(hp, mode="train", audio_extension='.wav'):
     '''Loads data
       Args:
-          mode: "train" / "validation" / "synthesize" / "demo".
+          mode: "train" / "validation" / "synthesis" / "demo".
     '''
     assert mode in ('train', 'synthesis', 'validation', 'demo')
     logging.info('Start loading data in mode: %s'%(mode))
     get_speaker_codes = ( hp.multispeaker != []) ## False if hp.multispeaker is empty list
 
     dataset_df_path=os.path.join(hp.featuredir,'dataset_'+mode+'.csv')
-    # TODO: this does not work in train mode because of  problem with doing pd.eval() with bytes, I think
-    if False: #os.path.exists(dataset_df_path):
+    
+    # In demo mode, we change the "dataset" with only one line each time and do not want to use always the same df
+    if False: #os.path.exists(dataset_df_path) and mode != 'demo':
         dataset_df=pd.read_csv(dataset_df_path)
         
         dataset = {}
         #import pdb;pdb.set_trace()
-        dataset['texts'] = np.array([pd.eval(e) for e in dataset_df['texts'].tolist()])
+
+        # this does not work in train mode because of  problem with doing pd.eval() with bytes
+        try:
+            dataset['texts'] = np.array([pd.eval(e) for e in dataset_df['texts'].tolist()])
+        except AttributeError:
+            #that is why we do this
+            dataset['texts'] = np.array([ast.literal_eval(e) for e in dataset_df['texts'].tolist()])
+            # I think this cause an error when trying training:
+            # tensorflow.python.framework.errors_impl.InvalidArgumentError: Input to DecodeRaw has length 105 that is not a multiple of 4, the size of int32
+            
         dataset['fpaths'] = dataset_df['fpaths'].tolist() ## at synthesis, fpaths only a way to get bases -- wav files probably do not exist
         dataset['text_lengths'] = dataset_df['text_lengths'].tolist() ## only used in training (where length information lost due to string format) - TODO: good motivation for this format?
         dataset['audio_lengths'] = dataset_df['audio_lengths'].tolist() ## might be []
@@ -151,30 +164,12 @@ def load_data(hp, mode="train", audio_extension='.wav'):
                     if hp.validpatt not in fname:
                         continue
 
-            if mode in ["train", "validation"] and os.path.exists(hp.coarse_audio_dir):
-                mel = "{}/{}".format(hp.coarse_audio_dir, fname+".npy")
-                if not os.path.exists(mel):
-                    logging.debug('no file %s'%(mel))
-                    no_data_count += 1
-                    continue
-                nframes = np.load(mel).shape[0]
-                if nframes > hp.max_T:
-                    #print('number of frames for %s is %s, exceeds max_T %s: skip it'%(fname, nframes, hp.max_T))
-                    too_long_count_frames += 1
-                    continue
-                audio_lengths.append(nframes)
+            
 
             if len(fields) >= 4:
                 phones = fields[3]
 
             
-
-            ## get speaker before phones in case need to get speaker-dependent phones
-            if get_speaker_codes:
-                assert len(fields) >= 5, fields            
-                speaker = fields[4]
-                speaker_ix = speaker2ix[speaker]
-                speakers.append(np.array(speaker_ix, np.int32))    
 
             if norm_text is None:
                 letters_or_phones = [] #  [0] ## dummy 'text' (1 character of padding) where we are using audio only
@@ -196,11 +191,33 @@ def load_data(hp, mode="train", audio_extension='.wav'):
                 too_long_count_text += 1
                 continue
 
+
+            if mode in ["train", "validation"] and os.path.exists(hp.coarse_audio_dir):
+                mel = "{}/{}".format(hp.coarse_audio_dir, fname+".npy")
+                if not os.path.exists(mel):
+                    logging.debug('no file %s'%(mel))
+                    no_data_count += 1
+                    continue
+                nframes = np.load(mel).shape[0]
+                if nframes > hp.max_T:
+                    #print('number of frames for %s is %s, exceeds max_T %s: skip it'%(fname, nframes, hp.max_T))
+                    too_long_count_frames += 1
+                    continue
+                audio_lengths.append(nframes)
+
             texts.append(np.array(letters_or_phones, np.int32))
 
             fpath = os.path.join(hp.waveforms, fname + audio_extension)
             fpaths.append(fpath)
-            text_lengths.append(text_length)                
+            text_lengths.append(text_length)     
+            
+            ## get speaker before phones in case need to get speaker-dependent phones
+            if get_speaker_codes:
+                assert len(fields) >= 5, fields            
+                speaker = fields[4]
+                speaker_ix = speaker2ix[speaker]
+                speakers.append(np.array(speaker_ix, np.int32))    
+                       
 
             if hp.merlin_label_dir: ## only get shape here -- get the data later
                 try:
@@ -229,6 +246,7 @@ def load_data(hp, mode="train", audio_extension='.wav'):
             #     label_length, _ = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
             #     label_lengths.append(label_length)
 
+        #import pdb;pdb.set_trace()
 
         if mode=="validation":
             if len(texts)==0:
@@ -252,7 +270,6 @@ def load_data(hp, mode="train", audio_extension='.wav'):
                 audio_lengths = audio_lengths[:n_utts]
             if label_lengths:
                 label_lengths = label_lengths[:n_utts]
-
 
         if mode == 'train':
             ## Return string representation which will be parsed with tf's decode_raw:
@@ -295,8 +312,8 @@ def load_data(hp, mode="train", audio_extension='.wav'):
             # It is already a list
             pass
         try:
-            if len(dataset_df['audio_lengths'])==0: dataset_df['audio_lengths']=[0]*len(dataset_df['texts'])                                                                                   
-            if len(dataset_df['label_lengths'])==0: dataset_df['label_lengths']=[0]*len(dataset_df['texts'])  
+            if len(dataset_df['audio_lengths'])==0: dataset_df['audio_lengths']=[0]*len(dataset_df['texts'])
+            if len(dataset_df['label_lengths'])==0: dataset_df['label_lengths']=[0]*len(dataset_df['texts'])
             if not os.path.exists(hp.featuredir): os.makedirs(hp.featuredir)
             pd.DataFrame.to_csv(pd.DataFrame.from_records(dataset_df), dataset_df_path) 
         except:
@@ -527,10 +544,6 @@ def get_batch(hp, batchsize, dataset=None, data=None, model='t2m'):
                 return fpath, label
             _, merlin_label = tf.py_func(load_merlin_label, [fpath], [tf.string, tf.float32]) # py_func wraps a python function and use it as a TensorFlow op.
             merlin_label.set_shape((None, hp.merlin_lab_dim))  ## will be phones x n_linguistic_features
-
-
-
-
 
         ### Earlier way to load durations (TODO - prune)
         # if hp.use_external_durations:
