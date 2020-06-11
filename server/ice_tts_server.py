@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 import soundfile as sf
 import scipy
+from scipy.stats import gaussian_kde
 import io
 import json
 import pandas as pd
@@ -16,6 +17,8 @@ from datetime import datetime
 
 from synthesize import tts_model
 from wsgiref import simple_server
+
+
 
 class SurveyResource(object):
     def on_post(self, req, resp):
@@ -57,7 +60,7 @@ class ImgResource:
         res.content_type = 'image/'+self.ext
 
 class PlotResource:
-    def __init__(self,  hp, plot_data, codes, emo_cats=None, n_polar_axes=0):
+    def __init__(self,  hp, plot_data, codes, emo_cats=None, n_polar_axes=0, gradients=None):
         self.hp=hp
         self.plot_data=plot_data
         self.codes=codes
@@ -67,6 +70,11 @@ class PlotResource:
         self.fig, self.ax = plt.subplots()
         
         df=pd.DataFrame()
+
+        # Calculate the point density
+        #z = gaussian_kde(matrice)(matrice)
+        #z-=np.min(z)
+        #z/=np.max(z)
         
         if emo_cats!=None:
             df['style']=emo_cats
@@ -74,11 +82,13 @@ class PlotResource:
                 s=g.split('_')[-1].lower()
                 i = np.where(df['style'] == g)
                 print(i)
-                self.ax.scatter(matrice[i,0], matrice[i,1], label=s, alpha=0.8, edgecolors='none')
+                self.ax.scatter(matrice[i,0], matrice[i,1], label=s, alpha=0.5, edgecolors='none')
                 self.ax.legend(bbox_to_anchor=(0.11, 0.65))
         else:
-            self.ax.scatter(matrice[:,0], matrice[:,1], alpha=0.8, edgecolors='none')
+            self.ax.scatter(matrice[:,0], matrice[:,1], alpha=0.1, edgecolors='none')
 
+        #if gradients!=None:
+        #    print('here we plot gradients')
         
         self.ax.grid(True)
 
@@ -109,7 +119,10 @@ class PlotResource:
             #import pdb;pdb.set_trace()
         #self.ax.scatter(matrice[:,0], matrice[:,1])
         #plt.show()
-        self.fig.savefig('server/plot.png')
+
+
+
+        self.fig.savefig('server/plot'+self.hp.logdir.split('/')[-2] +'.png')
         print(self.ax.dataLim)
         print(self.ax.viewLim)
         print(self.ax._position)
@@ -118,7 +131,7 @@ class PlotResource:
         #dataset=load_data(hp)
 
     def on_get(self, req, res):
-        img=plt.imread('server/plot.png')
+        img=plt.imread('server/plot'+self.hp.logdir.split('/')[-2] +'.png')
         out = io.BytesIO()
         plt.imsave(out, img)
         res.data = out.getvalue()
