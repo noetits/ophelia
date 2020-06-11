@@ -14,6 +14,11 @@ import numpy as np
 from tqdm import tqdm
 import librosa
 
+import inspect
+def getLineInfo():
+    print(inspect.stack()[1][1],":",inspect.stack()[1][2],":",
+          inspect.stack()[1][3])
+
 class Graph(object):
     def __init__(self, hp, mode="train", load_in_memory=True, reuse=None):
         assert mode in ['train', 'synthesize', 'generate_attention'] 
@@ -32,10 +37,14 @@ class Graph(object):
             
     def load_data_in_memory(self, model='t2m'):
         if self.hp.prepro and self.mode=='train' and self.load_in_memory:
+            
             self.dataset = load_data(self.hp) 
             mels={}
             if model=='ssrn': mags={}
             fpaths = self.dataset['fpaths']
+
+            getLineInfo()
+            print('Loading data in memory')
             for fpath in tqdm(fpaths):
                 fn,mel,mag=self.load_spectrograms_in_memory(fpath, audio_extension=fpath.split('.')[-1])
                 mels[fn.split('.')[0]]=mel
@@ -90,6 +99,10 @@ class Graph(object):
         ## L: Text. (B, N), int32
         ## mels: Reduced melspectrogram. (B, T/r, n_mels) float32
         ## mags: Magnitude. (B, T, n_fft//2+1) float32
+
+        getLineInfo()
+        print('Adding variables to model')
+
         hp = self.hp
 
         if self.mode is 'train':
@@ -295,7 +308,7 @@ class Text2MelGraph(Graph):
                         #pdb.set_trace()
                 else:
                     print('No unsupervised expressive embedding')
-                    self.emo_mean=None
+                    self.emo_mean_expanded=None
                     #pdb.set_trace()
 
                 with tf.variable_scope("TextEnc"):
@@ -440,7 +453,23 @@ class BabblerGraph(Graph):
                                             ## to allow parameters to be reused more easily later
             # Get S or decoder inputs. (B, T//r, n_mels). This is audio shifted 1 frame to the right.
             self.S = tf.concat((tf.zeros_like(self.mels[:, :1, :]), self.mels[:, :-1, :]), 1)
-
+            
+            # Build a latent representation of expressiveness, if we defined uee in config file (for unsupervised expressiveness embedding)
+            
+            if self.hp.uee!=0:
+                with tf.variable_scope("Audio2Emo"):
+                    with tf.variable_scope("AudioEnc"):
+                        self.emos = Audio2Emo(self.hp, self.S, training=self.training, speaker_codes=self.speakers, reuse=self.reuse) # (B, T/r, d=8)
+                        self.emo_mean = tf.reduce_mean(self.emos, 1)
+                        print(self.emo_mean.get_shape())
+                        self.emo_mean = tf.expand_dims(self.emo_mean,axis=1)
+                        print(self.emo_mean.get_shape())
+                        #pdb.set_trace()
+            else:
+                print('No unsupervised expressive embedding')
+                self.emo_mean=None
+                #pdb.set_trace()
+            
             ## Babbler has no TextEnc
 
             with tf.variable_scope("AudioEnc"):
@@ -453,7 +482,7 @@ class BabblerGraph(Graph):
                 self.R = tf.concat((dummy_R_prime, self.Q), -1) 
 
             with tf.variable_scope("AudioDec"):
-                self.Y_logits, self.Y = AudioDec(self.hp, self.R, training=self.training, speaker_codes=self.speakers, reuse=self.reuse) # (B, T/r, n_mels)
+                self.Y_logits, self.Y = AudioDec(self.hp, self.R, emos=self.emo_mean, training=self.training, speaker_codes=self.speakers, reuse=self.reuse) # (B, T/r, n_mels)
 
 
     def build_loss(self):
@@ -464,8 +493,9 @@ class BabblerGraph(Graph):
         self.loss_bd = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.mels))
 
         # total loss, with 2 terms combined with loss weights:
-        self.loss = (hp.loss_weights['babbler']['L1'] * self.loss_mels) + \
-                    (hp.loss_weights['babbler']['binary_divergence'] * self.loss_bd) 
+        
+        self.loss = (hp.lw_mel * self.loss_mels) + \
+                    (hp.lw_bd1 * self.loss_bd) 
 
         # loss_components attribute is used for reporting to log (osw)
         self.loss_components = [self.loss, self.loss_mels, self.loss_bd]
@@ -502,7 +532,7 @@ class Graph_style_unsupervised(Graph):
         except:
             print('No unsupervised expressive embedding')
             self.emo_mean=None
-            pdb.set_trace()
+            #pdb.set_trace()
         
         with tf.variable_scope("Text2Mel"):
             # Networks
