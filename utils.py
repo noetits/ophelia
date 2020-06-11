@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from scipy import signal
 import numpy as np
 import tensorflow as tf
-
+import pdb
 
 def get_spectrograms(hp, fpath):
     '''Parse the wave file in `fpath` and
@@ -31,7 +31,10 @@ def get_spectrograms(hp, fpath):
       mag: A 2d array of shape (T, 1+n_fft/2) and dtype of float32.
     '''
     # Loading sound file
-    y, sr = librosa.load(fpath, sr=hp.sr)
+    try:
+        y, sr = librosa.load(fpath, sr=hp.sr)
+    except:
+        pdb.set_trace()
 
     # Trimming
     if hp.trim_before_spectrogram_extraction:
@@ -114,6 +117,33 @@ def invert_spectrogram(hp, spectrogram):
       spectrogram: [1+n_fft//2, t]
     '''
     return librosa.istft(spectrogram, hp.hop_length, win_length=hp.win_length, window="hann")
+
+# from mel-spectrogram !! (from github.com/fatchord/WaveRNN)
+def reconstruct_waveform(hp, mel, n_iter=32):
+    """Uses Griffin-Lim phase reconstruction to convert from a normalized
+    mel spectrogram back into a waveform."""
+    #denormalized = denormalize(mel)
+    #amp_mel = db_to_amp(denormalized)
+    # transpose
+    mel = mel.T
+
+    # de-noramlize
+    mel = (np.clip(mel, 0, 1) * hp.max_db) - hp.max_db + hp.ref_db
+
+    # to amplitude
+    mel = np.power(10.0, mel * 0.05)
+
+    S = librosa.feature.inverse.mel_to_stft(
+        mel, power=1, sr=hp.sr,
+        n_fft=hp.n_fft)#, fmin=hp.fmin)
+    wav = librosa.core.griffinlim(
+        S, n_iter=n_iter,
+        hop_length=hp.hop_length, win_length=hp.win_length)
+
+    # de-preemphasis
+    wav = signal.lfilter([1], [1, -hp.preemphasis], wav)
+    return wav
+
 
 # TODO add functionality so that we can also plot on phone identities to the encoder states on the y-axis
 def plot_alignment(hp, alignment, utt_idx, t2m_epoch, dir=''):
