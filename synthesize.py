@@ -12,7 +12,7 @@ import timeit
 from argparse import ArgumentParser
 
 import numpy as np
-#from scipy.io.wavfile import write
+from scipy.io.wavfile import write
 import soundfile
 
 import tensorflow as tf
@@ -20,7 +20,7 @@ import tensorflow as tf
 from tqdm import tqdm
 
 from utils import plot_alignment
-from utils import spectrogram2wav, durations_to_position
+from utils import spectrogram2wav, durations_to_position, reconstruct_waveform
 from utils import split_streams, magphase_synth_from_compressed 
 from data_load import load_data, text_to_phonetic
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph, Graph_style_unsupervised
@@ -147,7 +147,7 @@ def synth_babble(hp, g, sess, seed=False, nsamples=16):
         Y[:, j, :] = _Y[:, j, :]
     return Y
 
-def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_data=None, \
+def synth_codedtext2mel(hp, K, V, ends, g, sess, seed=None, speaker_data=None, duration_data=None, \
                 labels=None, position_in_phone_data=None):
     '''
     K, V: coded texts
@@ -155,6 +155,9 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_dat
     sess: Session
     '''
     Y = np.zeros((len(K), hp.max_T, hp.n_mels), np.float32) # note that len(K) == num_sentences that we want to generate wavs for
+    if seed is not None:
+        Y[:,0,:]=seed
+        #Y[:,1,:]=seed
     alignments = np.zeros((len(ends), hp.max_N, hp.max_T), np.float32)
     prev_max_attentions = np.zeros((len(K),), np.int32)
 
@@ -230,7 +233,7 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_dat
     return (Y, t_ends.tolist(), alignments)
 
 def encode_text(hp, L, g, sess, emo_mean=None, speaker_data=None, labels=None):  
-
+    #import pdb;pdb.set_trace()
     if emo_mean is None:
         feeddict = {g.L: L}
     else:
@@ -449,6 +452,9 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.2, logf0=True):
     comm = 'rm %s.f0 %s.sp %s.ap %s.mgc %s.df0 %s.dap %s.log'%(outfile,outfile,outfile,outfile,outfile,outfile,outfile)
     os.system(comm)
     
+def synth_wave_from_mel(hp, mel, outfile):
+    wav=reconstruct_waveform(hp, mel, n_iter=32)
+    soundfile.write(outfile, wav, hp.sr)
 
 def synth_wave(hp, mag, outfile):
     if hp.vocoder == 'griffin_lim':
@@ -487,7 +493,13 @@ class tts_model:
             self.g1 = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 (t2m) loaded")
         elif model_type=='unsup':
             self.g1 = Graph_style_unsupervised(hp, mode="synthesize"); print("Graph 1 (unsup) loaded")
-        self.g2 = SSRNGraph(hp, mode="synthesize"); print("Graph 2 (ssrn) loaded")
+
+        if hp.r>1:
+            self.g2 = SSRNGraph(hp, mode="synthesize"); print("Graph 2 (ssrn) loaded")
+        elif hp.r==1:
+            print('hp.r = 1 : we do not use SSRN network')
+        else:
+            print('hp.r should be >=1')
         self.sess = tf.Session()
 
         self.sess.run(tf.global_variables_initializer())
@@ -499,12 +511,14 @@ class tts_model:
             restore_archived_model_parameters(self.sess, hp, model_type, t2m_epoch)
         else:
             self.t2m_epoch = restore_latest_model_parameters(self.sess, hp, model_type)
-        if ssrn_epoch > -1:    
-            restore_archived_model_parameters(self.sess, hp, 'ssrn', ssrn_epoch)
-        else:
-            self.ssrn_epoch = restore_latest_model_parameters(self.sess, hp, 'ssrn')
+
+        if hp.r>1:
+            if ssrn_epoch > -1:    
+                restore_archived_model_parameters(self.sess, hp, 'ssrn', ssrn_epoch)
+            else:
+                self.ssrn_epoch = restore_latest_model_parameters(self.sess, hp, 'ssrn')
      
-    def synthesize(self, text=None, emo_code=None, mels=None, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
+    def synthesize(self, text=None, emo_code=None, seed=None, id='test', mels=None, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
         '''
         topoutdir: store samples under here; defaults to hp.sampledir
         t2m_epoch and ssrn_epoch: default -1 means use latest. Otherwise go to archived models.
@@ -512,7 +526,8 @@ class tts_model:
         assert self.hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
         if text is not None:
-            text_to_phonetic(text=text)
+            #import pdb;pdb.set_trace()
+            text_to_phonetic(text=text, id=id)
             dataset=load_data(self.hp, mode='demo')
         else:
             dataset = load_data(self.hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
@@ -572,7 +587,7 @@ class tts_model:
                 emo_code=encode_audio2emo(self.hp, mels, self.g1, self.sess)
             K, V = encode_text(self.hp, L, self.g1, self.sess, emo_mean=emo_code, speaker_data=speaker_data, labels=labels)
             Y, lengths, alignments = synth_codedtext2mel(self.hp, K, V, text_lengths, self.g1, self.sess, \
-                                speaker_data=speaker_data, duration_data=duration_data, \
+                                seed=seed, speaker_data=speaker_data, duration_data=duration_data, \
                                 position_in_phone_data=position_in_phone_data,\
                                 labels=labels)
         else: ## 5.68, 5.43, 5.38 seconds (2 sentences)
@@ -582,17 +597,6 @@ class tts_model:
                                             labels=labels)
         stop_clock(t)
 
-        ### TODO: useful to test this?
-        # print(Y[0,:,:])
-        # print (np.isnan(Y).any())
-        # print('nan1')
-        # Then pass output Y of Text2Mel Graph through SSRN graph to get high res spectrogram Z.
-        t = start_clock('Mel2Mag generating...')
-        Z = synth_mel2mag(self.hp, Y, self.g2, self.sess)
-        stop_clock(t) 
-
-        if (np.isnan(Z).any()):  ### TODO: keep?
-            Z = np.nan_to_num(Z)
 
         # Generate wav files
         if not topoutdir:
@@ -606,29 +610,61 @@ class tts_model:
         
         assert self.hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
-        if ncores==1:
-            for i, mag in tqdm(enumerate(Z)):
-                outfile = os.path.join(outdir, bases[i] + '.wav')
-                mag = mag[:lengths[i]*self.hp.r,:]  ### trim to generated length
-                synth_wave(self.hp, mag, outfile)
+        ### TODO: useful to test this?
+        # print(Y[0,:,:])
+        # print (np.isnan(Y).any())
+        # print('nan1')
+        # Then pass output Y of Text2Mel Graph through SSRN graph to get high res spectrogram Z.
+        if self.hp.r>1:
+            t = start_clock('Mel2Mag generating...')
+            Z = synth_mel2mag(self.hp, Y, self.g2, self.sess)
+            stop_clock(t) 
+
+            if (np.isnan(Z).any()):  ### TODO: keep?
+                Z = np.nan_to_num(Z)
+
+            if ncores==1:
+                for i, mag in tqdm(enumerate(Z)):
+                    outfile = os.path.join(outdir, bases[i] + '.wav')
+                    mag = mag[:lengths[i]*self.hp.r,:]  ### trim to generated length
+                    synth_wave(self.hp, mag, outfile)
+            else:
+                executor = ProcessPoolExecutor(max_workers=ncores)    
+                futures = []
+                for i, mag in tqdm(enumerate(Z)):
+                    outfile = os.path.join(outdir, bases[i] + '.wav')
+                    mag = mag[:lengths[i]*self.hp.r,:]  ### trim to generated length
+                    futures.append(executor.submit(synth_wave, self.hp, mag, outfile))
+                proc_list = [future.result() for future in tqdm(futures)]
+        elif self.hp.r==1:
+            print('hp.r=1 : We do not use SSRN network and directly use librosa inverse transform (inverse mel filters and griffin lim)')
+            if ncores==1:
+                for i, mel in tqdm(enumerate(Y)):
+                    outfile = os.path.join(outdir, bases[i] + '.wav')
+                    mel = mel[:lengths[i]*self.hp.r,:]  ### trim to generated length
+                    synth_wave_from_mel(self.hp, mel, outfile)
+            else:
+                executor = ProcessPoolExecutor(max_workers=ncores)    
+                futures = []
+                for i, mel in tqdm(enumerate(Y)):
+                    outfile = os.path.join(outdir, bases[i] + '.wav')
+                    mel = mel[:lengths[i]*self.hp.r,:]  ### trim to generated length
+                    futures.append(executor.submit(synth_wave_from_mel, self.hp, mel, outfile))
+                proc_list = [future.result() for future in tqdm(futures)]
         else:
-            executor = ProcessPoolExecutor(max_workers=ncores)    
-            futures = []
-            for i, mag in tqdm(enumerate(Z)):
-                outfile = os.path.join(outdir, bases[i] + '.wav')
-                mag = mag[:lengths[i]*self.hp.r,:]  ### trim to generated length
-                futures.append(executor.submit(synth_wave, self.hp, mag, outfile))
-            proc_list = [future.result() for future in tqdm(futures)]
-            
+            print('hp.r is smaller than one. It should be an integer >=1')
+
         # Plot attention alignments 
         for i in range(num_sentences):
             plot_alignment(self.hp, alignments[i], utt_idx=i+1, t2m_epoch=self.t2m_epoch, dir=outdir)
         
+        #print(outfile)
         self.outdir=outdir
 
+        return Y, Z, alignments
 
 
-def synthesize(hp, text=None, emo_code=None, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_epoch=-1, ssrn_epoch=-1):
+def synthesize(hp, text=None, emo_code=None, seed=None, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_epoch=-1, ssrn_epoch=-1):
     '''
     topoutdir: store samples under here; defaults to hp.sampledir
     t2m_epoch and ssrn_epoch: default -1 means use latest. Otherwise go to archived models.
@@ -705,7 +741,7 @@ def synthesize(hp, text=None, emo_code=None, speaker_id='', num_sentences=0, nco
         else:
             t2m_epoch = restore_latest_model_parameters(sess, hp, 't2m')
 
-        if ssrn_epoch > -1:    
+        if ssrn_epoch > -1:
             restore_archived_model_parameters(sess, hp, 'ssrn', ssrn_epoch)
         else:
             ssrn_epoch = restore_latest_model_parameters(sess, hp, 'ssrn')
@@ -713,11 +749,12 @@ def synthesize(hp, text=None, emo_code=None, speaker_id='', num_sentences=0, nco
         # Pass input L through Text2Mel Graph
         t = start_clock('Text2Mel generating...')
         ### TODO: after futher efficiency testing, remove this fork
+        #import pdb;pdb.set_trace()
         if 1:  ### efficient route -- only make K&V once  ## 3.86, 3.70, 3.80 seconds (2 sentences)
             text_lengths = get_text_lengths(L)
             K, V = encode_text(hp, L, g1, sess, emo_mean=emo_code, speaker_data=speaker_data, labels=labels)
             Y, lengths, alignments = synth_codedtext2mel(hp, K, V, text_lengths, g1, sess, \
-                                speaker_data=speaker_data, duration_data=duration_data, \
+                                seed=seed, speaker_data=speaker_data, duration_data=duration_data, \
                                 position_in_phone_data=position_in_phone_data,\
                                 labels=labels)
         else: ## 5.68, 5.43, 5.38 seconds (2 sentences)
@@ -779,12 +816,13 @@ def synthesize(hp, text=None, emo_code=None, speaker_id='', num_sentences=0, nco
         #         sys.exit('Unsupported vocoder type: %s'%(hp.vocoder))
         #     #write(outdir + "/{}.wav".format(bases[i]), hp.sr, wav)
         #     soundfile.write(outdir + "/{}.wav".format(bases[i]), wav, hp.sr)
-            
-
-            
+        
         # Plot attention alignments 
         for i in range(num_sentences):
             plot_alignment(hp, alignments[i], utt_idx=i+1, t2m_epoch=t2m_epoch, dir=outdir)
+    
+    return Y, Z, alignments
+    
 
 
 def main_work():
