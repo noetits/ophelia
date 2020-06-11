@@ -1,2 +1,6 @@
 *.pyc
 *.cfgc
+*.wav
+*.csv
+festival/
+tools/
