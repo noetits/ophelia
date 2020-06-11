@@ -368,7 +368,7 @@ def FixedAttention(hp, duration_matrix, Q, V):
     alignments = tf.transpose(duration_matrix, [0, 2, 1]) # (B, N, T/r)
     return R, alignments, max_attentions
 
-def AudioDec(hp, R, training=True, speaker_codes=None, reuse=None):
+def AudioDec(hp, R, training=True, emos=None, speaker_codes=None, reuse=None):
     '''
     Args:
       R: [Context Vectors; Q]. (B, T/r, 2d)
@@ -380,6 +380,10 @@ def AudioDec(hp, R, training=True, speaker_codes=None, reuse=None):
     if 'learn_channel_contributions' in hp.multispeaker:
         lcc = hp.nspeakers
     i = 1
+
+    if not emos is None: 
+        R=broadcast_concat(R,emos)
+    
     tensor = conv1d(R,
                     filters=hp.d,
                     size=1,
