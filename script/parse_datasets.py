@@ -137,7 +137,7 @@ def load_acapela(path_to_ACAPELA, emo_cat):
             words=dic.iloc[:,1].tolist()
             words = [w[:-2] for w in words]
             transcription=' '.join(words)
-            e={'database':'ACAPELA',
+            e = {'database':'ACAPELA',
                'id':f,
                'speaker':speaker,
                'emotion':cat,
@@ -166,7 +166,10 @@ import librosa
 def parse_breath_group(dic_path, phn_path, sentence_path, sr=22050):
     phn=pd.read_csv(phn_path, header=None, sep=' ')
     dic=pd.read_csv(dic_path, sep='[', quoting=csv.QUOTE_NONE)
-    dic_silences_indices=dic.loc[dic['_ ] ']=='_ ] '].index.tolist()
+    a=dic['_ ] ']=='_ ] '
+    b=dic['_ ] ']=='_ ]'
+    c=a|b
+    dic_silences_indices=dic.loc[c].index.tolist()
     phn_silences_indices=phn.loc[phn[2]=='_'].index.tolist()
 
     sample_start=phn_silences_indices[0]
@@ -175,7 +178,13 @@ def parse_breath_group(dic_path, phn_path, sentence_path, sr=22050):
     y,sr=librosa.load(sentence_path, sr=sr)
     transcriptions=[]
     wavs=[]
+    durations=[]
+    starts=[]
+    ends=[]
+
     start=-1
+
+    silence_samples=round(50/1000*sr) # number of samples corresponding to 50 ms of silences to have before and after a breath group
     for i_sil in range(len(dic_silences_indices)):
         sample_end=phn.iloc[phn_silences_indices[i_sil],0]
 
@@ -186,12 +195,18 @@ def parse_breath_group(dic_path, phn_path, sentence_path, sr=22050):
         words = [w[:-2] for w in words]
         transcription=' '.join(words)
         transcriptions.append(transcription)
-        wavs.append(y[sample_start:sample_end])
+
+
+        wavs.append(y[max(0,sample_start-silence_samples):min(len(y)-1,sample_end+silence_samples)])
+        starts.append(max(0,sample_start-silence_samples)/sr)
+        ends.append(min(len(y)-1,sample_end+silence_samples)/sr)
+        duration=(ends[-1]-starts[-1])
+        durations.append(duration)
 
         start=end
         sample_start=phn.iloc[phn_silences_indices[i_sil],1]
     
-    return transcriptions, wavs
+    return transcriptions, wavs, durations, starts, ends
 
 
 def load_full_will(path_to_ACAPELA='databases/WILL_FULL', audio_extension='.flac'):
@@ -212,7 +227,7 @@ def load_full_will(path_to_ACAPELA='databases/WILL_FULL', audio_extension='.flac
         for f in files:
             # pdb.set_trace()
             transcription=parse_dic(path_to_text+'/'+f+'.dic')
-            e={'database':'WILL_FULL',
+            e = {'database':'WILL_FULL',
                'id':f,
                'speaker':speaker,
                'emotion':cat,
@@ -237,7 +252,7 @@ def load_blizzard2013(path='databases/blizzard2013/train/segmented/', audio_exte
         dic_path=os.path.join(path,'SEG_NUU',f+'.dic')
         
         transcription=parse_dic(dic_path)
-        e={'database':'blizzard2013',
+        e = {'database':'blizzard2013',
             'id':f,
             #'speaker':speaker,
             #'emotion':cat,
@@ -247,7 +262,7 @@ def load_blizzard2013(path='databases/blizzard2013/train/segmented/', audio_exte
     data = pd.DataFrame.from_records(data)
     return data
 
-def parse_blizzard2013_by_breath_group(path='databases/blizzard2013/train/segmented/', audio_extension='.wav', outpath='databases/ICE_TTS/blizzard2013/wavs16bits/', sr=22050):
+def parse_blizzard2013_by_breath_group(path='databases/blizzard2013/train/segmented/', audio_extension='.wav', outpath='databases/ICE_TTS/blizzard2013/wavs/', sr=22050, write_wavs=True):
     if not os.path.exists(outpath): os.makedirs(outpath) 
 
     df=load_blizzard2013(path=path, audio_extension=audio_extension)
@@ -258,11 +273,14 @@ def parse_blizzard2013_by_breath_group(path='databases/blizzard2013/train/segmen
     for i,row in tqdm.tqdm(df.iterrows()):
         dic_path=os.path.join(path,'SEG_NUU',row.id+'.dic')
         phn_path=os.path.join(path,'SEG_NUU',row.id+'.phn22')
-        transcriptions, wavs=parse_breath_group(dic_path, phn_path, row.sentence_path, sr=sr)
+        transcriptions, wavs, durations, starts, ends = parse_breath_group(dic_path, phn_path, row.sentence_path, sr=sr)
         for i,wav in enumerate(wavs):
-            e={
+            e = {
             'id':'_'.join([row.id,'seg',str(i)]),
             'transcription':transcriptions[i],
+            'duration':durations[i],
+            'start':starts[i],
+            'end':ends[i]
             }
             #print(e)
             data.append(e)
@@ -270,7 +288,8 @@ def parse_blizzard2013_by_breath_group(path='databases/blizzard2013/train/segmen
             #import pdb;pdb.set_trace()
             #maxv = np.iinfo(np.int16).max
             #librosa.output.write_wav(os.path.join(outpath,e['id']+audio_extension),(wav * maxv).astype(np.int16),sr)
-            sf.write(os.path.join(outpath,e['id']+audio_extension), wav, sr, subtype='PCM_16')
+            if write_wavs:
+                sf.write(os.path.join(outpath,e['id']+audio_extension), wav, sr, subtype='PCM_16')
 
             
     data = pd.DataFrame.from_records(data)
@@ -279,9 +298,21 @@ def parse_blizzard2013_by_breath_group(path='databases/blizzard2013/train/segmen
     return data
 
 
+# def write_blizzard2013_by_breath_group(data):
+
+#     for i,row in tqdm.tqdm(data.iterrows()):
+#         #e = {
+#         #    'id':'_'.join([row.id,'seg',str(i)]),
+#         #    'transcription':transcriptions[i],
+#         #    'duration':durations[i],
+#         #    'start':starts[i],
+#         #    'end':ends[i]
+#         #    }
+
+#         sf.write(os.path.join(outpath,row['id']+audio_extension), wav, sr, subtype='PCM_16')
 
 
-def load_emov_db(path_to_EmoV_DB):
+def load_emov_db(path_to_EmoV_DB, db_name='EmoV-DB'):
     print('Load EmoV-DB')
     # TODO: remove this line and load all speakers
     # emo_path = os.path.split(path_to_EmoV_DB)[0]
@@ -330,7 +361,7 @@ def load_emov_db(path_to_EmoV_DB):
                             text = sentences[sentences['n'] == fnumber]['text'].iloc[0]
                         except:
                             print('In load_emov_db: did not find the sentence coresponding to '+str(file)+', check if the filename is standard (similar with others)')
-                        e = {'database': 'EmoV-DB',
+                        e = {'database': db_name,
                              'id': file[:-4],
                              'speaker': speaker,
                              'emotion':emo,
@@ -427,5 +458,14 @@ def load_libriTTS(path_to_libriTTS='databases/LibriTTS', category='train-clean-1
     return data
 
 def data_to_transcript(data, outpath='databases/ICE_TTS/LibriTTS/transcript.csv'):
+    # we take files that are at least 0.3 seconds. These are either empty or "ah", "oh" words.
+    if 'Libri' in outpath:
+        data=data[data.duration>0.3]
+    
+    # this is especially for dataset from acapela defining numbers and dates with the character "#". 
+    # But anyway this character is not contained in letters
+    idx=data[data['transcription'].str.contains('#')].index
+    data=data.drop(idx)
+
     d=data[['id','transcription','transcription']]
-    d.to_csv(outpath, sep='|', index=False)
+    d.to_csv(outpath, sep='|', index=None, header=None)
