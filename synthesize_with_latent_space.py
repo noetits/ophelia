@@ -25,12 +25,18 @@ from configuration import load_config
 
 import logger_setup
 from logging import info
+import logging
+
+logging.getLogger('matplotlib.font_manager').disabled = True
+
 
 from data_load import *
 import numpy as np
 from synthesize import *
 
 import pickle
+
+import matplotlib.pyplot as plt
 
 def compute_opensmile_features(hp, conf_path='./tools/opensmile-2.3.0/config/gemaps/eGeMAPSv01a.conf', audio_extension='.wav', mode='train'):
     conf_name=conf_path.split('/')[-1].split('.')[0]
@@ -84,7 +90,6 @@ def gather_opensmile_features(hp, conf_path='./tools/opensmile-2.3.0/config/gema
     feat_df=pd.concat(dfs, axis=1).transpose()
     feat_df.to_csv(os.path.join(feature_path,'feat_df_'+mode+'.csv'))
 
-
 def mi_regression_feat_embed(X, feat_df):
     '''
     X corresponds to latent embeddings
@@ -113,33 +118,21 @@ def regression_feat_embed(X, feat_df):
     y=feat_df.values
     reg = LinearRegression().fit(X, y)
     coeff=reg.coef_
-    intercept=reg.intercept_
-    print(coeff.shape)
-    print(intercept.shape)
-    y_pred=reg.predict(X)
-    print(X.shape)
-    print(y.shape)
+    coeff_df = pd.DataFrame(coeff)
+    coeff_df.index = feat_df.columns
+    return reg, coeff_df
 
-    # Test linear regression manually
-    # pred=np.dot(coeff,np.array([X[0,:]]).T)+np.array([intercept]).T
-    # print(np.max(y_pred[0,:]-pred[:,0])) # This should be 0 (or almost)
-
+def test_regression(model, X, feat_df):
+    y=feat_df.values
+    y_pred=model.predict(X)
 
     corrs_embed=np.zeros(y.shape[-1])
     for idx in range(y.shape[-1]):
         corrs_embed[idx]=np.corrcoef([y_pred[:,idx],y[:,idx].astype(float)])[0,1]
 
-        #corrs_embeds.append(corrs_embed)
-        #coeffs.append(coeff)
-    #corrs_embeds=np.array(corrs_embeds).T
-    #coeffs = np.array(coeffs)
-
     corrs_embed_df=pd.DataFrame(corrs_embed)
     corrs_embed_df.index=feat_df.columns
-
-    coeff_df = pd.DataFrame(coeff)
-    coeff_df.index = feat_df.columns
-    return corrs_embed_df, coeff_df
+    return corrs_embed_df
 
 
 def corr_feat_embed(embed_dfs, feat_df, titles=[]):
@@ -182,6 +175,24 @@ def corr_feat_embed(embed_dfs, feat_df, titles=[]):
 
     return corr_embeds, mi_embeds
 
+def select_features(corrs_embed_df, feat_df, intra_corr_thresh=0.8, corr_thresh=0.3):
+    intra_feat_corrs=feat_df.corr()
+    selected_indices=[]
+    sorted_corrs=corrs_embed_df.sort_values(0)[::-1]
+    for i in range(len(sorted_corrs)):
+        row=sorted_corrs.iloc[i]
+        #print(row.name)
+        
+        # we check the correlations of the current feature with previous features
+        bigger=intra_feat_corrs[sorted_corrs.index].T.iloc[:i,:][row.name].abs()>intra_corr_thresh
+        too_much_correlated_with_previous=bigger.sum()>0
+        if not too_much_correlated_with_previous:
+            selected_indices.append(i)
+    
+    selected=sorted_corrs.iloc[selected_indices]
+    high_corrs=selected.abs()>corr_thresh
+    selected_high_corrs=selected[high_corrs].dropna()
+    return selected_high_corrs
 
 def load_features(hp, conf_path='./tools/opensmile-2.3.0/config/gemaps/eGeMAPSv01a.conf'):
     import glob
@@ -258,9 +269,53 @@ def scatter_plot(matrice, c=None, s=1):
     import matplotlib.pyplot as plt
     import matplotlib
     #matplotlib.use('TkAgg')
-    scatter=plt.scatter(matrice[:,0], matrice[:,1], c=c, s=s)
+    plt.cla()
+    scatter=plt.scatter(matrice[:,0], matrice[:,1], c=c, s=s, alpha=0.3)
     return scatter
 
+def plot_gradients(coeff,corr, ax=plt.gca()):
+    import matplotlib
+    matplotlib.use('Agg')
+    # V=coeff.values
+    # ax=plt.gca()
+    origin = [0,0] # origin point
+    # origin = [0], [0] # origin point
+    # q=ax.quiver(*origin, V[:,0], V[:,1])
+    from adjustText import adjust_text
+    texts=[]
+    for i in range(len(corr)):
+        # if (corr.loc[coeff.index[i]].round(2).iloc[0])>0.5:
+            grad=coeff[coeff.index==corr.index[i]].values[0]
+            x=[origin[0], grad[0]]
+            y = [origin[1], grad[1]]
+            ax.plot(x, y, lw=2)
+            # ax.legend()
+            # ax.annotate(coeff.index[i], xy=(grad[0], grad[1]), xycoords='data')
+            feat_name=corr.index[i].replace('_sma3', ' ').replace('nz','').replace('_','').replace('amean','mean').replace('semitoneFrom27.5Hz','')
+            texts.append(ax.text(grad[0], grad[1], feat_name+' '+str(corr.iloc[i].iloc[0].round(2)), fontsize=9))
+    adjust_text(texts, force_text=0.05, autoalign='xy', arrowprops=dict(arrowstyle="->", color='b', lw=1))
+    plt.show()
+
+def add_margin(ax,x=0.05,y=0.05):
+    # This will, by default, add 5% to the x and y margins. You 
+    # can customise this using the x and y arguments when you call it.
+
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+
+    xmargin = (xlim[1]-xlim[0])*x
+    ymargin = (ylim[1]-ylim[0])*y
+
+    ax.set_xlim(xlim[0]-xmargin,xlim[1]+xmargin)
+    ax.set_ylim(ylim[0]-ymargin,ylim[1]+ymargin)
+
+def abbridge_column_names(df):
+    feats=[]
+    for i in range(len(df.columns)):
+        feat_name=df.columns[i].replace('_sma3', ' ').replace('nz','').replace('_','').replace('amean','mean').replace('semitoneFrom27.5Hz','').replace('stddev','std').replace('Stddev','std')
+        feats.append(feat_name)
+    df.columns=feats
+    return df
 
 def main_work():
     
@@ -268,7 +323,7 @@ def main_work():
     a = ArgumentParser()
     a.add_argument('-c', dest='config', required=True, type=str)
     a.add_argument('-m', dest='model_type', required=True, choices=['t2m', 'unsup'])
-    a.add_argument('-t', dest='task', required=True, choices=['compute_gradients','compute_codes', 'reduce_codes', 'compute_opensmile_features', 'show_plot','ICE_TTS','ICE_TTS_server'])
+    a.add_argument('-t', dest='task', required=True, choices=['acoustic_analysis','compute_codes', 'reduce_codes', 'compute_opensmile_features', 'show_plot','ICE_TTS','ICE_TTS_server'])
     a.add_argument('-r', dest='reduction_method', required=False, choices=['pca', 'tsne', 'umap'])
     a.add_argument('-p', dest='port', required=False, type=int, default=5000)
     opts = a.parse_args()
@@ -282,7 +337,8 @@ def main_work():
     port=opts.port
 
 
-    mode='validation'
+    mode='train'
+
     logger_setup.logger_setup(logdir)
     info('Command line: %s'%(" ".join(sys.argv)))
     print(logdir)
@@ -337,48 +393,149 @@ def main_work():
         #ice=ICE_TTS_server(hp, embed_reduc, embed, model_type=model_type)
         #ice=ICE_TTS_server(hp, embed_reduc, embed, n_polar_axes=4, model_type=model_type)
     
-    elif task=='compute_gradients':
+    elif task=='acoustic_analysis':
         import seaborn as sns
+        from sklearn.feature_selection import SelectKBest
+        from sklearn.feature_selection import f_regression
+        from sklearn.linear_model import LinearRegression
+        from pandas.plotting import scatter_matrix
+        # from pandas.plotting._matplotlib.misc import scatter_matrix
+        import matplotlib.pyplot as plt 
+        from scipy.stats import pearsonr
+        import itertools
+
         print('MODE', mode)
         try:
             embed=load_embeddings(logdir, mode=mode)[:,0,:]
+            embed_valid=load_embeddings(logdir, mode='validation')[:,0,:]
         except IndexError: # I may have changed the shape of the matrix ...
             embed=load_embeddings(logdir, mode=mode)
+            embed_valid=load_embeddings(logdir, mode='validation')
 
         conf_name='eGeMAPSv01a'
         feature_path=os.path.join(hp.featuredir,'opensmile_features',conf_name,'feat_df_'+mode+'.csv') 
         feat_df=pd.read_csv(feature_path)
         feat_df=feat_df.drop(columns=['Unnamed: 0'])
 
-        corrs_embed_df, coeff_df = regression_feat_embed(pd.DataFrame(embed), feat_df)
+    
+        feature_path=os.path.join(hp.featuredir,'opensmile_features',conf_name,'feat_df_'+'validation'+'.csv') 
+        feat_df_valid=pd.read_csv(feature_path)
+        #import pdb;pdb.set_trace()
+        feat_df_valid=feat_df_valid.drop(columns=['Unnamed: 0'])
+
+        feat_df=abbridge_column_names(feat_df)
+        feat_df_valid=abbridge_column_names(feat_df_valid)
+
+        # Mean normalization (with same mean and variance computed from training data)
+        feat_df=(feat_df-feat_df.mean())/feat_df.std() 
+        feat_df_valid=(feat_df_valid-feat_df.mean())/feat_df.std() 
+
+        model, coeff_df = regression_feat_embed(pd.DataFrame(embed), feat_df)
+        corrs_embed_df=test_regression(model, pd.DataFrame(embed_valid), feat_df_valid)
         print('Correlations:')
-        #print(corrs_embed_df)
+        print(corrs_embed_df.sort_values(0)[::-1][:20])
+
+        selected=select_features(corrs_embed_df, feat_df_valid, intra_corr_thresh=0.7, corr_thresh=0.3)
+        print(selected.to_latex().replace('\_sma3', ' ').replace('nz','').replace('\_','').replace('amean','mean').replace('semitoneFrom27.5Hz',''))
         # print('Gradients:')
         # print(coeff_df)
-        # corrs_heatmap=sns.heatmap(feat_df.corr())
-        # corrs_heatmap.get_figure().savefig('corrs_heatmap.png')
-
-        print(corrs_embed_df.sort_values(0)[::-1][:20])
+        
 
         #method='pca'
 
         embed_reduc=load_embeddings(logdir, filename='emo_codes_'+method, mode=mode)
+        embed_reduc_valid=load_embeddings(logdir, filename='emo_codes_'+method, mode='validation')
 
-        corrs_embed_reduc_df, coeff_reduc_df = regression_feat_embed(pd.DataFrame(embed_reduc), feat_df)
+        model_reduc, coeff_reduc_df = regression_feat_embed(pd.DataFrame(embed_reduc), feat_df)
+        corrs_embed_reduc_df=test_regression(model_reduc, pd.DataFrame(embed_reduc_valid), feat_df_valid)
         print('Correlations:')
-        #print(corrs_embed_reduc_df)
-        #print('Gradients:')
-        #print(coeff_reduc_df)
-
         print(corrs_embed_reduc_df.sort_values(0)[::-1][:20])
 
-        #sc=scatter_plot(embed_reduc, c=feat_df['F0semitoneFrom27.5Hz_sma3nz_amean'].values)
-        #sc.get_figure().savefig('scatter_'+method+'.png')
+        selected_reduc=select_features(corrs_embed_reduc_df, feat_df_valid, intra_corr_thresh=0.7, corr_thresh=0.25)
+        print(selected.to_latex().replace('\_sma3', ' ').replace('nz','').replace('\_','').replace('amean','mean').replace('semitoneFrom27.5Hz',''))
 
-        mi=mi_regression_feat_embed(pd.DataFrame(embed_reduc), feat_df)
+        feat_predictions_df=pd.DataFrame(model.predict(embed))
+        feat_predictions_df.index=feat_df.index
+        feat_predictions_df.columns=feat_df.columns
 
-        print('mi',mi.sort_values(0)[::-1][:20])
-        print('mi',mi.sort_values(1)[::-1][:20])
+        feat_df[selected.index]
+        feat_predictions_df[selected.index]
+
+        # just checking it seems correct
+        # print(pearsonr(feat_df[selected.index]['F0semitoneFrom27.5Hz_sma3nz_percentile50.0'],feat_predictions_df[selected.index]['F0semitoneFrom27.5Hz_sma3nz_percentile50.0'] ))
+        
+        # selected_feats=selected.index.to_list()
+        # fig, axs = plt.subplots(nrows=sc.shape[0], ncols=sc.shape[1], figsize=(100, 100))
+        # for pair in itertools.product(range(len(selected)), repeat=2): 
+        #     x=feat_df[selected_feats[pair[0]]]
+        #     y=feat_predictions_df[selected_feats[pair[1]]]
+        #     axs[pair[0], pair[1]].scatter(x, y, alpha=0.2)
+        # fig.savefig('figures/scatter_matrix.png')
+
+        
+        h=100
+        selected_feats=selected.index.to_list()
+        fig, axs = plt.subplots(nrows=len(selected), ncols=1, figsize=(h/len(selected)*3, h))
+        for i in range(len(selected)):
+            x=feat_df[selected_feats[i]]
+            y=feat_predictions_df[selected_feats[i]]
+            axs[i].scatter(x, y, alpha=0.2)
+        fig.savefig('figures/scatter_plots_feats.png')
+
+        
+        #print(corrs_embed_reduc_df)
+        print('Gradients:')
+        print(coeff_reduc_df)
+
+        normalized_gradients=coeff_reduc_df.div(((coeff_reduc_df**2).sum(axis=1))**0.5, axis=0)
+        
+        plt.cla()
+        plt.clf() 
+        plt.close()
+        # sc=scatter_plot(embed_reduc, c=feat_df['F0semitoneFrom27.5Hz_sma3nz_amean'].values)
+        sc=scatter_plot(embed_reduc, c=feat_df['F0 mean'].values)
+        plot_gradients(normalized_gradients,selected_reduc, ax=sc.get_figure().gca())
+        sc.get_figure().savefig('figures/scatter_F0_mean_'+method+'.png')
+
+        print(feat_df.columns)
+        # sc=scatter_plot(embed_reduc, c=feat_df['F0semitoneFrom27.5Hz_sma3nz_amean'].values)
+        sc=scatter_plot(embed_reduc, c=feat_df['F3amplitudeLogRelF0 stddevNorm'].values)
+        plot_gradients(normalized_gradients,selected_reduc, ax=sc.get_figure().gca())
+        sc.get_figure().savefig('figures/scatter_F3amplitudeLogRelF0_stddevNorm_'+method+'.png')
+
+        
+        plt.cla()
+        plt.clf() 
+        plt.close()
+        hist=sns.distplot(feat_df['F0 mean'])
+        hist.get_figure().savefig('figures/hist_F0_mean_'+method+'.png')
+
+        hist=sns.distplot(feat_df['F3amplitudeLogRelF0 stddevNorm'])
+        hist.get_figure().savefig('figures/hist_F3amplitudeLogRelF0_stddevNorm_'+method+'.png')
+
+
+
+        #mi=mi_regression_feat_embed(pd.DataFrame(embed_reduc), feat_df)
+        #print('mi',mi.sort_values(0)[::-1][:20])
+        #print('mi',mi.sort_values(1)[::-1][:20])
+
+        # Plot corrs heatmaps
+        plt.close()
+        corrs_heatmap_feats=sns.heatmap(feat_df.corr().abs(), xticklabels=False)
+        corrs_heatmap_feats.get_figure().savefig('figures/corrs_heatmap_feats.pdf', bbox_inches='tight')
+
+        plt.close()
+        embed_corr=pd.DataFrame(embed).corr().abs()
+        embed_corr_heatmap=sns.heatmap(embed_corr)
+        embed_corr_heatmap.get_figure().savefig('figures/embed_corr_heatmap.pdf', bbox_inches='tight')
+
+        plt.close()
+        corr_feat_embed=pd.concat([pd.DataFrame(embed),feat_df], axis=1).corr().abs()
+        sns.set(font_scale=0.2)
+        corr_feat_embed_heatmap=sns.heatmap(corr_feat_embed, xticklabels=False)
+        # add_margin(corr_feat_embed_heatmap,x=0.1,y=0.0)
+        corr_feat_embed_heatmap.get_figure().savefig('figures/corr_feat_embed_heatmap.pdf', bbox_inches='tight')
+        
 
     else:
         print('Wrong task, does not exist')
