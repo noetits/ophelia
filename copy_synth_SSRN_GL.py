@@ -44,7 +44,7 @@ def copy_synth_SSRN_GL(hp, outdir):
             print("Working on %s"%(bases[i]))
             mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length             
             wav = spectrogram2wav(hp, mag)
-            soundfile.write(outdir + "/%s.wav"%(base), wav, hp.sr)
+            soundfile.write(outdir + "/%s.wav"%(bases[i]), wav, hp.sr)
 
   
 
