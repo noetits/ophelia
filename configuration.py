@@ -25,7 +25,7 @@ CONFIG_DEFAULTS = [
     ('squash_output_t2m', True, 'apply sigmoid to output - binary divergence loss will be disabled if False'),
     ('squash_output_ssrn', True, 'apply sigmoid to output - binary divergence loss will be disabled if False'),
     ('data_info',None,''),
-    ('uee',None,''),
+    ('uee',0,''),
     ('use_vae',False,''),
     ('if_vae_use_loss',True,''),
     ('attention_reparam',False,'')
