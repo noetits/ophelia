@@ -85,11 +85,12 @@ def load_data(hp, mode="train", audio_extension='.wav'):
     assert mode in ('train', 'synthesis', 'validation', 'demo')
     logging.info('Start loading data in mode: %s'%(mode))
     get_speaker_codes = ( hp.multispeaker != []) ## False if hp.multispeaker is empty list
-
+    #import pdb;pdb.set_trace()
     dataset_df_path=os.path.join(hp.featuredir,'dataset_'+mode+'.csv')
     
     # In demo mode, we change the "dataset" with only one line each time and do not want to use always the same df
-    if False: #os.path.exists(dataset_df_path) and mode != 'demo':
+    #if os.path.exists(dataset_df_path) and mode != 'demo':
+    if 0:
         dataset_df=pd.read_csv(dataset_df_path)
         
         dataset = {}
@@ -114,7 +115,6 @@ def load_data(hp, mode="train", audio_extension='.wav'):
         if hp.use_external_durations:
             dataset['durations'] = dataset_df['durations'].tolist()
 
-        return dataset
     else:
         if mode in ['synthesis', 'demo']: get_speaker_codes = False ## never read speaker from transcript for synthesis -- take user-specified speaker instead
 
@@ -270,7 +270,8 @@ def load_data(hp, mode="train", audio_extension='.wav'):
                 audio_lengths = audio_lengths[:n_utts]
             if label_lengths:
                 label_lengths = label_lengths[:n_utts]
-
+        
+        
         if mode == 'train':
             ## Return string representation which will be parsed with tf's decode_raw:
             texts = [text.tostring() for text in texts] 
@@ -323,7 +324,10 @@ def load_data(hp, mode="train", audio_extension='.wav'):
             dataset['speakers'] = speakers
         if hp.use_external_durations:
             dataset['durations'] = durations
-        return dataset
+    
+    logging.info('Finished loading data in mode: %s'%(mode))
+    #import pdb;pdb.set_trace()
+    return dataset
 
 
 def get_batch(hp, batchsize, dataset=None, data=None, model='t2m'):
