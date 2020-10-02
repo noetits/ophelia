@@ -29,8 +29,8 @@ CODEDIR=`pwd`
 create a conda environment and activate it:
 
 ```
-conda create -n py_ophelia_dctts python=3
-conda activate py_ophelia_dctts
+conda create -n py_ice_talk python=3
+conda activate py_ice_talk
 ```
 
 With the virtual environment activated, you can now install the necessary packages.
