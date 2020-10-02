@@ -18,8 +18,8 @@ The TTS architecture is based on Oliver Watt's [ophelia](https://github.com/CSTR
 Go to a suitable location and clone repository:
 
 ```
-git clone https://github.com/noetits/ophelia.git
-cd ophelia
+git clone https://github.com/noetits/ICE-Talk
+cd ICE-Talk/
 CODEDIR=`pwd`
 ```
 
