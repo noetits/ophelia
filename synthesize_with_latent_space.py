@@ -33,9 +33,7 @@ logging.getLogger('matplotlib.font_manager').disabled = True
 from data_load import *
 import numpy as np
 from synthesize import *
-
 import pickle
-
 import matplotlib.pyplot as plt
 
 def compute_opensmile_features(hp, conf_path='./tools/opensmile-2.3.0/config/gemaps/eGeMAPSv01a.conf', audio_extension='.wav', mode='train'):
@@ -72,7 +70,7 @@ def compute_opensmile_features(hp, conf_path='./tools/opensmile-2.3.0/config/gem
         #import pdb;pdb.set_trace()
         dfs.append(pd.read_csv(features_file, sep=';').iloc[0].iloc[2:]) # discard two first useless elements (name and frametime)
     feat_df=pd.concat(dfs, axis=1).transpose()
-    feat_df.to_csv(os.path.join(feature_path,'feat_df.csv'))
+    feat_df.to_csv(os.path.join(feature_path,'feat_df_'+mode+'.csv'))
 
 def gather_opensmile_features(hp, conf_path='./tools/opensmile-2.3.0/config/gemaps/eGeMAPSv01a.conf', audio_extension='.wav', mode='train'):
     conf_name=conf_path.split('/')[-1].split('.')[0]
@@ -265,12 +263,13 @@ def embeddings_reduction(embed, method='pca'):
         print('Wrong dimension reduction method')
     return model, results
 
-def scatter_plot(matrice, c=None, s=1):
+def scatter_plot(matrice, c=None, s=20, alpha=1):
     import matplotlib.pyplot as plt
     import matplotlib
     #matplotlib.use('TkAgg')
     plt.cla()
-    scatter=plt.scatter(matrice[:,0], matrice[:,1], c=c, s=s, alpha=0.3)
+    scatter=plt.scatter(matrice[:,0], matrice[:,1], c=c, s=s, alpha=alpha, vmin=c.mean()-3*c.std(), vmax=c.mean()+3*c.std())
+    plt.colorbar()
     return scatter
 
 def plot_gradients(coeff,corr, ax=plt.gca()):
@@ -337,7 +336,7 @@ def main_work():
     port=opts.port
 
 
-    mode='train'
+    mode='validation'
 
     logger_setup.logger_setup(logdir)
     info('Command line: %s'%(" ".join(sys.argv)))
@@ -384,7 +383,7 @@ def main_work():
             embed=load_embeddings(logdir, mode=mode)
         
         print('Loading embeddings')
-        embed_reduc=load_embeddings(logdir, filename='emo_codes_'+method)
+        embed_reduc=load_embeddings(logdir, filename='emo_codes_'+method, mode=mode)
         print('Loading emo cats')
         emo_cats=get_emo_cats(hp)
         #emo_cats=load(logdir, filename='emo_cats')
@@ -497,11 +496,33 @@ def main_work():
         plot_gradients(normalized_gradients,selected_reduc, ax=sc.get_figure().gca())
         sc.get_figure().savefig('figures/scatter_F0_mean_'+method+'.png')
 
-        print(feat_df.columns)
+
+        plt.cla()
+        plt.clf() 
+        plt.close()
         # sc=scatter_plot(embed_reduc, c=feat_df['F0semitoneFrom27.5Hz_sma3nz_amean'].values)
-        sc=scatter_plot(embed_reduc, c=feat_df['F3amplitudeLogRelF0 stddevNorm'].values)
+        sc=scatter_plot(embed_reduc, c=feat_df['F0 percentile50.0'].values)
         plot_gradients(normalized_gradients,selected_reduc, ax=sc.get_figure().gca())
-        sc.get_figure().savefig('figures/scatter_F3amplitudeLogRelF0_stddevNorm_'+method+'.png')
+        sc.get_figure().savefig('figures/scatter_F0_percentile50.0_'+method+'.png')
+
+        print(feat_df.columns)
+        # import pdb;pdb.set_trace()
+        plt.cla()
+        plt.clf() 
+        plt.close()
+        # sc=scatter_plot(embed_reduc, c=feat_df['F0semitoneFrom27.5Hz_sma3nz_amean'].values)
+        sc=scatter_plot(embed_reduc, c=feat_df['F3amplitudeLogRelF0 stdNorm'].values)
+        plot_gradients(normalized_gradients,selected_reduc, ax=sc.get_figure().gca())
+        sc.get_figure().savefig('figures/scatter_F3amplitudeLogRelF0_stdNorm_'+method+'.png')
+
+        
+        plt.cla()
+        plt.clf() 
+        plt.close()
+        # sc=scatter_plot(embed_reduc, c=feat_df['F0semitoneFrom27.5Hz_sma3nz_amean'].values)
+        sc=scatter_plot(embed_reduc, c=feat_df['stdVoicedSegmentLengthSec'].values)
+        plot_gradients(normalized_gradients,selected_reduc, ax=sc.get_figure().gca())
+        sc.get_figure().savefig('figures/scatter_stdVoicedSegmentLengthSec_'+method+'.png')
 
         
         plt.cla()
@@ -510,8 +531,8 @@ def main_work():
         hist=sns.distplot(feat_df['F0 mean'])
         hist.get_figure().savefig('figures/hist_F0_mean_'+method+'.png')
 
-        hist=sns.distplot(feat_df['F3amplitudeLogRelF0 stddevNorm'])
-        hist.get_figure().savefig('figures/hist_F3amplitudeLogRelF0_stddevNorm_'+method+'.png')
+        # hist=sns.distplot(feat_df['F3amplitudeLogRelF0 stddevNorm'])
+        # hist.get_figure().savefig('figures/hist_F3amplitudeLogRelF0_stddevNorm_'+method+'.png')
 
 
 
