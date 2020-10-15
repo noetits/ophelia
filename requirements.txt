@@ -16,3 +16,6 @@ tqdm
 PyQT5
 pandas
 umap-learn
+inflect
+falcon
+seaborn
