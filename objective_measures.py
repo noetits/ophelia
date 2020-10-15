@@ -42,10 +42,36 @@ def compute_dtw_error(references, predictions, distance=mt.logSpecDbDist):
     print ('overall score = %f (%s frames nat/synth)' % (mean_score, framesTot))
     return mean_score
 
-# without DTW
-def compute_error(reference_list, prediction_list, distance=mt.logSpecDbDist):
-    costTot = 0.0
-    framesTot = 0    
+def get_dtw_aligned_predictions(references, predictions, distance=mt.logSpecDbDist):
+    
+    minCostTot = 0.0
+    framesTot = 0
+    for (nat, synth) in tqdm(zip(references, predictions)):
+        nat, synth = nat.astype('float64'), synth.astype('float64')
+        minCost, path = dtw.dtw(nat, synth, distance)
+        frames = len(nat)
+        minCostTot += minCost
+        framesTot += frames
+    mean_score = minCostTot / framesTot
+    print ('overall score = %f (%s frames nat/synth)' % (mean_score, framesTot))
+    return mean_score
+
+def min_shifted_error(nat, synth, distance=mt.logSpecDbDist):
+    mincost=float('Inf')
+    for i in range(len(synth)):
+        shifted_synth=np.concatenate([synth[i:,:], synth[:i,:]])
+
+        cost = sum([
+            distance(natFrame, synthFrame)
+            for natFrame, synthFrame in zip(nat, shifted_synth)
+        ])
+        if cost<mincost: mincost=cost
+    
+    return mincost
+
+def error_list(reference_list, prediction_list, distance=mt.logSpecDbDist):
+    costs=[]
+    frames=[]
     for (synth, nat) in tqdm(zip(prediction_list, reference_list)):
         #synth = prediction_tensor[i,:,:].astype('float64')
         # len_nat = len(nat)
@@ -53,13 +79,40 @@ def compute_error(reference_list, prediction_list, distance=mt.logSpecDbDist):
         #synth = synth[:len_nat, :]
         nat = nat.astype('float64')
         synth = synth.astype('float64')
-        cost = sum([
-            distance(natFrame, synthFrame)
-            for natFrame, synthFrame in zip(nat, synth)
-        ])
-        framesTot += len(nat)
-        costTot += cost
-    return costTot / framesTot
+
+        # cost = sum([
+        #     distance(natFrame, synthFrame)
+        #     for natFrame, synthFrame in zip(nat, synth)
+        # ])
+
+        cost=min_shifted_error(nat, synth, distance=distance)
+
+        frames.append(len(nat))
+        costs.append(cost)
+    return costs, frames
+
+# without DTW but with a translation
+def compute_error(reference_list, prediction_list, distance=mt.logSpecDbDist):
+    costs, frames = error_list(reference_list, prediction_list, distance=distance)
+    return sum(costs)/sum(frames)
+
+# def compute_error(reference_list, prediction_list, distance=mt.logSpecDbDist):
+#     costTot = 0.0
+#     framesTot = 0
+#     for (synth, nat) in tqdm(zip(prediction_list, reference_list)):
+#         #synth = prediction_tensor[i,:,:].astype('float64')
+#         # len_nat = len(nat)
+#         assert len(synth) == len(nat)
+#         #synth = synth[:len_nat, :]
+#         nat = nat.astype('float64')
+#         synth = synth.astype('float64')
+#         cost = sum([
+#             distance(natFrame, synthFrame)
+#             for natFrame, synthFrame in zip(nat, synth)
+#         ])
+#         framesTot += len(nat)
+#         costTot += cost
+#     return costTot / framesTot
 
 def mgc_lf0_vuv(f0, sp, ap, fs=22050, order=13, alpha=None):
     if alpha is None:
@@ -124,28 +177,43 @@ def pad_features(ref_list, pred_list, padding=1e-16):
 def compute_and_save_features():
     ref_path='databases/ICE_TTS/blizzard2013/wavs/' 
     pred1_path='work/blizzard_letters/synth/t2m4000_ssrn14/reconstruction/'
-    # pred2_path='work/blizzard_unsupervised_letters/synth/t2mmodel_gs_504k_ssrn14/reconstruction/'
-    pred2_path='work/blizzard_unsupervised_letters/synth/t2m3942_ssrn14/reconstruction/'
+    pred2_path='work/blizzard_unsupervised_letters/synth/t2mmodel_gs_504k_ssrn14/reconstruction/'
+    # pred2_path='work/blizzard_unsupervised_letters/synth/t2m3942_ssrn14/reconstruction/'
+
+    l=pred2_path.split('/')
+    m=list(filter(None, l)) # drop empty elements ''
+    t2m=m[-2]
 
     ref_d = compute_features_from_path(ref_path)
     pickle.dump(ref_d, open('feats_for_eval/ref_d.p','wb'))
     pred1_d = compute_features_from_path(pred1_path)
     pickle.dump(pred1_d, open('feats_for_eval/pred1_d.p','wb'))
     pred2_d = compute_features_from_path(pred2_path)
-    pickle.dump(pred2_d, open('feats_for_eval/pred2_d.p','wb'))
+    pickle.dump(pred2_d, open('feats_for_eval/pred2_d_'+t2m+'.p','wb'))
 
     return ref_d,pred1_d,pred2_d
 
 def load_features():
+    ref_path='databases/ICE_TTS/blizzard2013/wavs/' 
+    pred1_path='work/blizzard_letters/synth/t2m4000_ssrn14/reconstruction/'
+    pred2_path='work/blizzard_unsupervised_letters/synth/t2mmodel_gs_504k_ssrn14/reconstruction/'
+    # pred2_path='work/blizzard_unsupervised_letters/synth/t2m3942_ssrn14/reconstruction/'
+
+    l=pred2_path.split('/')
+    m=list(filter(None, l)) # drop empty elements ''
+    t2m=m[-2]
+
     ref_d = pickle.load(open('feats_for_eval/ref_d.p','rb'))
     pred1_d = pickle.load(open('feats_for_eval/pred1_d.p','rb'))
-    pred2_d = pickle.load(open('feats_for_eval/pred2_d.p','rb'))
+    pred2_d = pickle.load(open('feats_for_eval/pred2_d_'+t2m+'.p','rb'))
     return ref_d, pred1_d, pred2_d
 
 
 def compute_errors_from_lists(ref_d, pred_d, fs=22050):
     ref_mgc_list, pred_mgc_list, ref_vuv_list, pred_vuv_list, ref_lf0_list, pred_lf0_list = [],[],[],[],[],[]
     ref_mgc_list_pad, pred_mgc_list_pad, ref_vuv_list_pad, pred_vuv_list_pad, ref_lf0_list_pad, pred_lf0_list_pad = [],[],[],[],[],[]
+
+    ref_f0_list, pred_f0_list = [],[]
 
     f0_continuous_list=[]
     
@@ -162,31 +230,49 @@ def compute_errors_from_lists(ref_d, pred_d, fs=22050):
         
         ref_mgc_list.append(ref_mgc[:,1:])
         ref_lf0_list.append(ref_lf0)
+        ref_f0_list.append(ref_f0[:, None])
         ref_vuv_list.append(ref_vuv)
+
         pred_mgc_list.append(pred_mgc[:,1:])
         pred_lf0_list.append(pred_lf0)
+        pred_f0_list.append(pred_f0[:, None])
         pred_vuv_list.append(pred_vuv)
 
     print('With DTW')
-    MCD = compute_dtw_error(ref_mgc_list, pred_mgc_list)
-    print('MCD', MCD)
-    VDE = compute_dtw_error(ref_vuv_list, pred_vuv_list, mt.eucCepDist)
-    print('VDE', VDE)
-    lf0_MSE = compute_dtw_error(ref_lf0_list, pred_lf0_list, mt.sqCepDist)
-    print('lf0_MSE', lf0_MSE)
+    MCD_dtw = compute_dtw_error(ref_mgc_list, pred_mgc_list)
+    print('MCD', MCD_dtw)
+    VDE_dtw = compute_dtw_error(ref_vuv_list, pred_vuv_list, mt.eucCepDist)
+    print('VDE', VDE_dtw)
+    lf0_MSE_dtw = compute_dtw_error(ref_lf0_list, pred_lf0_list, mt.sqCepDist)
+    print('lf0_MSE', lf0_MSE_dtw)
+    f0_MSE_dtw = compute_dtw_error(ref_f0_list, pred_f0_list, mt.sqCepDist)
+    print('f0_MSE', f0_MSE_dtw)
 
+    print('With shift')
+    MCD_shift = compute_error(ref_mgc_list, pred_mgc_list)
+    print('MCD', MCD_shift)
+    VDE_shift = compute_error(ref_vuv_list, pred_vuv_list, mt.eucCepDist)
+    print('VDE', VDE_shift)
+    lf0_MSE_shift = compute_error(ref_lf0_list, pred_lf0_list, mt.sqCepDist)
+    print('lf0_MSE', lf0_MSE_shift)
+    f0_MSE_shift = compute_error(ref_f0_list, pred_f0_list, mt.sqCepDist)
+    print('f0_MSE', f0_MSE_shift)
 
+    dtw_errors=np.array([MCD_dtw, VDE_dtw, lf0_MSE_dtw, f0_MSE_dtw])
+    print('dtw_errors', dtw_errors)
+    shift_errors=np.array([MCD_shift, VDE_shift, lf0_MSE_shift, f0_MSE_shift])
+    print('shift_errors', shift_errors)
+    
+    errors_df=pd.DataFrame([dtw_errors,shift_errors])
+    errors_df.columns=['MCD','VDE','lf0 MSE','f0 MSE']
+    errors_df.index=['DTW','shift']
 
-    print('Without DTW')
-    MCD = compute_error(ref_mgc_list, pred_mgc_list)
-    print('MCD', MCD)
-    VDE = compute_error(ref_vuv_list, pred_vuv_list, mt.eucCepDist)
-    print('VDE', VDE)
-    lf0_MSE = compute_error(ref_lf0_list, pred_lf0_list, mt.sqCepDist)
-    print('lf0_MSE', lf0_MSE)
+    print(errors_df)
+    print(errors_df.to_latex())
 
     # return MCD, VDE, F0_MSE
 
+ref_d, pred1_d, pred2_d =  load_features()
 print('-------  Errors between ref and classic TTS -------------')
 compute_errors_from_lists(ref_d, pred1_d)
 print('-------  Errors between ref and Unsup TTS -------------')
