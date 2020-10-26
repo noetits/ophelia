@@ -207,7 +207,7 @@ class ICE_TTS_server:
         # pdb.set_trace()
         # self.api.add_route('/synthesizeSet', SynthesizeSet(hp, plot_data, codes, plotRes, model_type=model_type))
         # self.api.add_route('/', WebResource("server/experience_restricted.html"))
-        self.api.add_route('/', WebResource(web_page))
+        self.api.add_route('/web_page', WebResource(web_page))
         self.api.add_route('/audio', AudioResource(plot_data, codes, plotRes))
         # self.api.add_route('/', WebResource("server/web_page.html"))
 
