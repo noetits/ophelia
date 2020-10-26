@@ -2,11 +2,10 @@ import falcon
 import argparse
 import numpy as np
 import soundfile as sf
-import scipy
-from scipy.io.wavfile import write
+# import scipy
+# from scipy.io.wavfile import write
 import io
 import json
-import pandas as pd
 import os
 
 
@@ -47,7 +46,12 @@ def map_range(x, x0, x1, y0, y1):
     nRel=(x-x0)/(x1-x0)
     return nRel*(y1-y0)+y0
 
-from scipy.spatial import distance
+# from scipy.spatial import distance
+def closest_node(node, nodes):
+    # closest_index = distance.cdist([node], nodes).argmin()
+    closest_index=((nodes-node)**2).sum(axis=1).argmin()
+    return closest_index
+
 def closest_node(node, nodes):
     closest_index = distance.cdist([node], nodes).argmin()
     return closest_index
@@ -108,8 +112,8 @@ class AudioResource:
         wav, samplerate = sf.read('all_with_pca_limits/sent_'+str(int(text))+'_code_'+str(idx)+'.wav')
 
         out = io.BytesIO()
-        wav *= 32767 / max(0.01, np.max(np.abs(wav)))
-        write(out, self.sr, wav.astype(np.int16))
+        # wav *= 32767 / max(0.01, np.max(np.abs(wav)))
+        sf.write(out, self.sr, wav)
         
         res.data = out.getvalue()
         res.content_type = 'audio/wav'
@@ -126,7 +130,7 @@ class PlotResource:
     def scatter_plot(self,matrice, emo_cats=None, n_polar_axes=0):
         self.fig, self.ax = plt.subplots()
         
-        df=pd.DataFrame()
+        
 
         # Calculate the point density
         #z = gaussian_kde(matrice)(matrice)
@@ -134,6 +138,8 @@ class PlotResource:
         #z/=np.max(z)
         
         if emo_cats!=None:
+            import pandas as pd
+            df=pd.DataFrame()
             df['style']=emo_cats
             for g in pd.unique(df['style']):
                 s=g.split('_')[-1].lower()
