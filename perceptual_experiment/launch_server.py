@@ -5,10 +5,10 @@ import os
 from itertools import product
 
 
-logdir='/home/noetits/noe/work/blizzard_unsupervised_letters/train-unsup'
-pca_model=pickle.load(open(os.path.join(logdir,'code_reduction_model_pca.pkl'), 'rb'))
+# logdir='/home/noetits/noe/work/blizzard_unsupervised_letters/train-unsup'
+pca_model=pickle.load(open('code_reduction_model_pca.pkl', 'rb'))
 
-train_codes_pca=np.load(logdir+'/emo_codes_pca_train.npy')
+train_codes_pca=np.load('emo_codes_pca_train.npy')
 min_xy=train_codes_pca.min(axis=0)
 max_xy=train_codes_pca.max(axis=0)
 
