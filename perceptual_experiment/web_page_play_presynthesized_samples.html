@@ -1,0 +1,103 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <title>ICE-Talk interface</title>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="googlebot" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="text/javascript" src="//code.jquery.com/jquery-1.8.3.js"></script>
+    <link rel="stylesheet" type="text/css" href="http://code.jquery.com/ui/1.9.2/themes/base/jquery-ui.css">
+    <script type="text/javascript" src="http://code.jquery.com/ui/1.9.2/jquery-ui.js"></script>
+</head>
+<body>
+    <html>
+<body>
+    <div style="text-align: center" id="interface">
+        <h2>ICE-Talk Demonstration</h2>
+      Write a sentence and click on the image to hear it with the style you want.<br><br>
+    <input id="text" type="text" size="40" placeholder="Enter Text" value="Hello, I am Catherine Byers, nice to meet you !"><br>
+    
+    <!--  <div id="xRes">Top:<span></span></div> 
+    <div id="yRes">Left:<span></span></div> -
+    <p id="demo"></p>
+    <p id="demo2"></p> -->
+    <img src="/plot" id="myImg"/><br>
+    <p id="message"></p>
+    <audio id="audio" controls autoplay hidden></audio><br>
+
+    <!--  <img src="/click" id="clickImg" width="200"/><br>
+    <img src="http://europe.wallonie.be/sites/default/files/logo_FEDER%2Bwallonie.png" id="federImg" width="200"/><br> -->
+    </div>
+    
+
+
+<script>
+
+q('#text').focus()
+$(window).load(function(){
+        $(document).ready(function (event) {
+            //$('#myImg').draggable();
+            $('#myImg').on('click', function(event){
+                
+                var xRes = $('#xRes span');
+                var yRes = $('#yRes span');
+                
+                var image = $('img#myImg');
+                var img = document.getElementById('myImg');
+                var width = img.width        
+                var height = img.height
+                
+                xRes.html(image.offset().top);
+                yRes.html(image.offset().left);
+                
+                var x = event.clientX;
+                var y = event.clientY;
+            
+                //var coords = "X coords: " + x + ", Y coords: " + y;
+                //document.getElementById("demo").innerHTML = coords;
+                
+                var xRel=(x-image.offset().left)/width
+                var yRel=(y-image.offset().top)/height
+                //var coords2 = "X coords: " + xRel + ", Y coords: " + yRel;
+                  //  document.getElementById("demo2").innerHTML = coords2;
+                text = q('#text').value.trim()
+                if (text) {
+                    q('#message').textContent = 'Synthesizing...'
+                    //q('#button').disabled = true
+                    q('#audio').hidden = true
+
+                    synthesize(0, xRel, yRel)
+                }
+            });
+        });
+    });
+
+    function q(selector) {return document.querySelector(selector)}
+    q('#text').focus()
+    function synthesize(text, x, y) {
+
+      fetch('/audio?text=' + text + '&x='+x+ '&y='+y, {cache: 'no-cache'})
+        .then(function(res) {
+          if (!res.ok) throw Error(res.statusText)
+          return res.blob()
+        }).then(function(blob) {
+          q('#message').textContent = ''
+          //q('#button').disabled = false
+          q('#audio').src = URL.createObjectURL(blob)
+          q('#audio').hidden = false
+        }).catch(function(err) {
+          q('#message').textContent = 'Error: ' + err.message
+          //q('#button').disabled = false
+        })
+    }
+    
+</script>
+
+</body>
+</html>
+
+</body>
+</html>
