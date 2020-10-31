@@ -10,8 +10,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script type="text/javascript" src="//code.jquery.com/jquery-1.8.3.js"></script>
     <link rel="stylesheet" type="text/css" href="http://code.jquery.com/ui/1.9.2/themes/base/jquery-ui.css">
-<link rel="icon" href="data:;base64,=">
+    <link rel="icon" href="data:;base64,=">
     <script type="text/javascript" src="http://code.jquery.com/ui/1.9.2/jquery-ui.js"></script>
+    
+    <script type="text/javascript" src="/static/X.json"></script>
+    <script type="text/javascript" src="/static/codes.json"></script>
+    <script src="https://cdn.jsdelivr.net/gh/nicolaspanel/numjs@0.15.1/dist/numjs.min.js"></script>
 </head>
 <body>
     <html>
@@ -34,8 +38,46 @@
     </div>
     
 
+    <p id="x"></p>
+    <p id="y"></p>
 
 <script>
+
+var X_json = $.ajax({
+  url: "/static/X.json",
+  dataType: "json",
+  success: function(response) {
+    $.each(response.Users, function(item) {
+      informationArray.push(item);
+    });
+    informationArray.push("success");
+  }
+});
+
+//var X=JSON.parse(JSON.parse(X_json.responseText))
+//console.log(X);
+
+
+function map_range(x, x0, x1, y0, y1){
+    nRel=(x-x0)/(x1-x0);
+    console.log(x0);
+    yRel=nRel*(y1-y0)+y0;
+    return yRel;
+    }
+
+function closest_node(node, nodes){
+idx=0
+min=999999999999999999999
+for (i = 0; i < nodes.shape[0]; i++) {
+    distance=(node.subtract(nodes.pick(i))).pow(2).sum();
+    if(distance<min){
+    min=distance;
+    idx=i
+    }
+    }
+    //closest_index=((nodes-node)**2).sum(axis=1).argmin();
+    return idx;
+}
 
 q('#text').focus()
 $(window).load(function(){
@@ -79,6 +121,29 @@ $(window).load(function(){
     function q(selector) {return document.querySelector(selector)}
     q('#text').focus()
     function synthesize(text, x, y) {
+
+      // data box and rel box to map the click coordinates to the right audio file are taken from the plot resource of ice_tts_server.py
+      data_box = [[-1.29809415, -1.34797373],
+      [ 2.66996396,  1.88252201]];
+      rel_box= [[0.125, 0.11 ],
+      [0.9,   0.88 ]];
+      
+      xData=map_range(x, rel_box[0][0], rel_box[1][0], data_box[0][0], data_box[1][0]);
+      //console.log(xData);
+      yData=map_range(1-y, rel_box[0][1], rel_box[1][1], data_box[0][1], data_box[1][1]);
+
+      document.getElementById("x").innerHTML = xData;
+      document.getElementById("y").innerHTML = yData;
+      //function q(selector) {return document.querySelector(selector)}
+
+      
+      var node = nj.array([xRel,yRel]);
+      var nodes = nj.array([[1,0],[0,0],[0,1]]);
+
+      q('#message').textContent = ''
+      //q('#button').disabled = false
+      q('#audio').src = URL.createObjectURL(blob)
+      q('#audio').hidden = false
 
       fetch('http://decombastower:5000/audio?text=' + text + '&x='+x+ '&y='+y, {cache: 'no-cache'})
         .then(function(res) {

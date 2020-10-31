@@ -26,6 +26,16 @@ class WebResource:
             html_body=myfile.read()
         res.body = html_body
 
+class StaticResource(object):
+    def on_get(self, req, resp, filename):
+        # do some sanity check on the filename
+        resp.status = falcon.HTTP_200
+        resp.content_type = 'appropriate/content-type'
+        with open('all_with_pca_limits/'+filename, 'rb') as f:
+            resp.body = f.read()
+
+
+
 class ImgResource:
     def __init__(self,  path_to_img='server/CLICK_BU_POS_RVB.png'):
         self.path_to_img=path_to_img
@@ -42,6 +52,7 @@ def map_range(x, x0, x1, y0, y1):
     Map the number n from the range x0,x1 to the range y0,y1
     '''
     print('x : {}, x0 : {}, x1 : {} '.format(x,x0,x1))
+    print('y0 : {}, y1 : {} '.format(y0,y1))
     #import pdb;pdb.set_trace()
     nRel=(x-x0)/(x1-x0)
     return nRel*(y1-y0)+y0
@@ -52,9 +63,9 @@ def closest_node(node, nodes):
     closest_index=((nodes-node)**2).sum(axis=1).argmin()
     return closest_index
 
-def closest_node(node, nodes):
-    closest_index = distance.cdist([node], nodes).argmin()
-    return closest_index
+# def closest_node(node, nodes):
+#     closest_index = distance.cdist([node], nodes).argmin()
+#     return closest_index
 
 class AudioResource:
     def __init__(self, plot_data, codes, plotRes, audio_path='/home/noetits/noe/work/blizzard_unsupervised_letters/synth/t2m3942_ssrn14/', default_text='The birch canoe slid on the smooth planks.'):
@@ -74,6 +85,7 @@ class AudioResource:
         self.audio_path=audio_path
 
     def on_get(self, req, res):
+        print('-----------------------------------')
         print('Text to synthesize')
         if not req.params.get('text'):
             print('No text was given, synthesizing default text.')
@@ -113,10 +125,13 @@ class AudioResource:
 
         out = io.BytesIO()
         # wav *= 32767 / max(0.01, np.max(np.abs(wav)))
-        sf.write(out, self.sr, wav)
+        # scipy.io.wavfile.write(out, self.sr, wav.astype(np.int16))
+        # write(out, self.sr, wav)
+        sf.write(out, wav, self.sr, format='wav')
         
         res.data = out.getvalue()
         res.content_type = 'audio/wav'
+        # print(res.data)
 
 
 
@@ -129,9 +144,6 @@ class PlotResource:
         self.n_polar_axes=n_polar_axes
     def scatter_plot(self,matrice, emo_cats=None, n_polar_axes=0):
         self.fig, self.ax = plt.subplots()
-        
-        
-
         # Calculate the point density
         #z = gaussian_kde(matrice)(matrice)
         #z-=np.min(z)
@@ -217,6 +229,12 @@ class ICE_TTS_server:
         self.api.add_route('/audio', AudioResource(plot_data, codes, plotRes))
         # self.api.add_route('/', WebResource("server/web_page.html"))
 
+        # for el in os.listdir('all_with_pca_limits')[:2]:
+        #     print(el)
+        #     self.api.add_route('/static/'+el, StaticResource())
+        self.api.add_route('/static/{filename}', StaticResource())
+
+        
         self.port=port
         print('Serving on port %d' % port)
         simple_server.make_server('0.0.0.0', port, self.api).serve_forever()
