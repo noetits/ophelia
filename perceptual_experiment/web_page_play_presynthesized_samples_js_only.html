@@ -60,14 +60,14 @@ var X_json = $.ajax({
 
 function map_range(x, x0, x1, y0, y1){
     nRel=(x-x0)/(x1-x0);
-    console.log(x0);
+    // console.log(x0);
     yRel=nRel*(y1-y0)+y0;
     return yRel;
     }
 
 function closest_node(node, nodes){
-idx=0
-min=999999999999999999999
+idx=0;
+min=999999999999999999999;
 for (i = 0; i < nodes.shape[0]; i++) {
     distance=(node.subtract(nodes.pick(i))).pow(2).sum();
     if(distance<min){
@@ -137,15 +137,21 @@ $(window).load(function(){
       //function q(selector) {return document.querySelector(selector)}
 
       
-      var node = nj.array([xRel,yRel]);
+      var node = nj.array([xData,yData]);
       var nodes = nj.array([[1,0],[0,0],[0,1]]);
 
-      q('#message').textContent = ''
-      //q('#button').disabled = false
-      q('#audio').src = URL.createObjectURL(blob)
-      q('#audio').hidden = false
+      idx=closest_node(node, nodes)
+      
+      // console.log('xData:')
+      // console.log(xData)
+      // console.log('yData:')
+      // console.log(yData)
+      // console.log('idx:')
+      // console.log(idx)
 
-      fetch('http://decombastower:5000/audio?text=' + text + '&x='+x+ '&y='+y, {cache: 'no-cache'})
+
+      // fetch('http://decombastower:5000/audio?text=' + text + '&x='+x+ '&y='+y, {cache: 'no-cache'})
+      fetch('/static/sent_0_code_'+idx+'.wav', {cache: 'no-cache'})
         .then(function(res) {
           if (!res.ok) throw Error(res.statusText)
           return res.blob()
