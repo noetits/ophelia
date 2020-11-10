@@ -1,9 +1,6 @@
 #!/bin/bash
-
-source activate py_ophelia_dctts
-
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=""
 
 echo "DATE : $(date)"
 echo "_____________________________________________"
@@ -16,5 +13,7 @@ echo "_____________________________________________"
 nvidia-smi -L
 echo "_____________________________________________"
 
-time python ./synthesize_with_latent_space.py -c ./config/will_unsupervised.cfg -m t2m -t ICE_TTS_server -r umap
+time python ./synthesize_with_latent_space.py -c ./config/blizzard_unsupervised_letters.cfg -m unsup -t ICE_TTS_server -r pca -p 5001
+# time python ./synthesize_with_latent_space.py -c ./config/will_unsupervised_letters_unsup_graph_old_preprocess.cfg -m unsup -t reduce_codes -r pca -p 5001
+# time python ./synthesize_with_latent_space.py -c ./config/will_unsupervised_letters_not_norm.cfg -m t2m -t ICE_TTS_server -r pca -p 5001
 

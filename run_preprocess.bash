@@ -1,0 +1,2 @@
+# time python prepare_acoustic_features.py -c config/will_unsupervised_letters_r_1.cfg -ncores 8 -ext .flac
+time python prepare_acoustic_features.py -c ./config/blizzard_unsupervised_letters.cfg -ncores 8 #-ext .flac
