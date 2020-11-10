@@ -331,6 +331,7 @@ def restore_latest_model_parameters(sess, hp, model_type):
     var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
     saver = tf.train.Saver(var_list=var_list)
     savepath = hp.logdir + "-" + model_type
+    # import pdb;pdb.set_trace()
     latest_checkpoint = tf.train.latest_checkpoint(savepath)
     if latest_checkpoint is None: sys.exit('No %s at %s?'%(model_type, savepath))
     latest_epoch = latest_checkpoint.strip('/ ').split('/')[-1].replace('model_epoch_', '')
@@ -526,9 +527,28 @@ class tts_model:
         assert self.hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
         if text is not None:
-            #import pdb;pdb.set_trace()
-            text_to_phonetic(text=text, id=id)
-            dataset=load_data(self.hp, mode='demo')
+            if isinstance(text, str):
+                #import pdb;pdb.set_trace()
+                if self.hp.input_type=='phones':
+                    text_to_phonetic(text=text, id=id)
+                else:
+                    if not os.path.exists('demo/'): os.makedirs('demo/')
+                    with open("demo/transcript.csv", "w") as text_file:
+                        text_file.write(id+'||'+text+'|'+text)
+                dataset=load_data(self.hp, mode='demo')
+            elif isinstance(text, list):
+                # if there is a list of texts, there should be a list of id
+                assert isinstance(id, list), 'if there is a list of texts, there should be a list of ids'
+                if self.hp.input_type=='phones':
+                    print('NOT IMPLENETED')
+                    raise NotImplementedError
+                else:
+                    if not os.path.exists('demo/'): os.makedirs('demo/')
+                    with open("demo/transcript.csv", "w") as text_file:
+                        for i,el in enumerate(text):
+                            text_file.write(id[i]+'||'+el+'|'+el+'\n')
+                    dataset=load_data(self.hp, mode='demo')
+
         else:
             dataset = load_data(self.hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
         fpaths, L = dataset['fpaths'], dataset['texts']
