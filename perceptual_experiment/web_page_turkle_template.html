@@ -16,35 +16,60 @@
     <script src="https://cdn.jsdelivr.net/gh/nicolaspanel/numjs@0.15.1/dist/numjs.min.js"></script>
 </head>
 <body>
-    <html>
+<html>
 <body>
+
+ <!--   <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script> -->
+ <!--   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous"> -->
+
     <div style="text-align: center" id="interface">
         <h2>ICE-Talk Demonstration</h2>
-      Write a sentence and click on the image to hear it with the style you want.<br><br>
-    <input id="text" type="text" size="40" placeholder="Enter Text" value="Hello, I am Catherine Byers, nice to meet you !"><br>
+      <!--Write a sentence and click on the image to hear it with the style you want.<br><br>
+      -->
+    <input id="text" type="hidden" size="40" placeholder="Enter Text" value="Hello, I am Catherine Byers, nice to meet you !"><br>
+  
+    <!--
+      <p>Choose one sentence</p>
     
-    
-    <p>Choose one sentence and click in the blue area to play a sample with a specific expressiveness</p>
-    
-        
-    <div id="choices">
-    <td><input type="radio" id="ChoiceSample2-0" name="ChoiceSample2" value="0" checked="checked"/></td>1. The birch canoe slid on the smooth planks.
-<br>
-    <td><input type="radio" id="ChoiceSample2-1" name="ChoiceSample2" value="1" /></td>2. Glue the sheet to the dark blue background.
-<br>
-    <td><input type="radio" id="ChoiceSample2-2" name="ChoiceSample2" value="2" /></td>3. It's easy to tell the depth of a well.
-<br>
-    <td><input type="radio" id="ChoiceSample2-3" name="ChoiceSample2" value="3" /></td>4. These days a chicken leg is a rare dish.
-<br>
-    <td><input type="radio" id="ChoiceSample2-4" name="ChoiceSample2" value="4" /></td>5. Rice is often served in round bowls.
-<br>
-  </div>
+      <table style="solid;margin-left:auto;margin-right:auto;">
+        <tr>
+          <td><label for="ChoiceSample2-0">0</label></td>
+          <td><label for="ChoiceSample2-1">1</label></td>
+          <td><label for="ChoiceSample2-2">2</label></td>
+          <td><label for="ChoiceSample2-3">3</label></td>
+          <td><label for="ChoiceSample2-3">4</label></td>
+        </tr>
+        <tr>
+          <div id="choices">
+          <td><input type="radio" id="ChoiceSample2-0" name="ChoiceSample2" value="0" checked="checked"/></td>
+          <td><input type="radio" id="ChoiceSample2-1" name="ChoiceSample2" value="1" /></td>
+          <td><input type="radio" id="ChoiceSample2-2" name="ChoiceSample2" value="2" /></td>
+          <td><input type="radio" id="ChoiceSample2-3" name="ChoiceSample2" value="3" /></td>
+          <td><input type="radio" id="ChoiceSample2-4" name="ChoiceSample2" value="4" /></td>
+        </div>
 
-<!--  <div id="xRes">Top:<span></span></div> 
-<div id="yRes">Left:<span></span></div> -
-<p id="demo"></p>
-<p id="demo2"></p> -->
-<img src="https://raw.githubusercontent.com/noetits/latent_space_exp/main/plotplot.png" id="myImg"/><br>
+        </tr>
+      </table>
+    -->
+    
+  <div class="container mt-2">
+    <h3>Instructions</h3>
+    <p>
+          Find the audio sample
+    </p>
+    <div class="row">
+  
+      <div class="form-group">
+          <audio id="ref" controls>Your browser does not support this task</audio>
+          <br>
+      </div>
+
+    
+    <!--  <div id="xRes">Top:<span></span></div> 
+    <div id="yRes">Left:<span></span></div> -
+    <p id="demo"></p>
+    <p id="demo2"></p> -->
+    <img src="https://raw.githubusercontent.com/noetits/latent_space_exp/main/plotplot.png" id="myImg"/><br>
     <p id="message"></p>
     <audio id="audio" controls autoplay hidden></audio><br>
 
@@ -52,12 +77,16 @@
     <img src="http://europe.wallonie.be/sites/default/files/logo_FEDER%2Bwallonie.png" id="federImg" width="200"/><br> -->
     </div>
     
-
+    <input type="hidden" name="selected_idx">
     <p id="x"></p>
     <p id="y"></p>
 
 <script>
+function q(selector) {return document.querySelector(selector)}
 
+// url='https://raw.githubusercontent.com/noetits/latent_space_exp/main/wavs/sent_'+'0'+'_code_'+"0"+'.wav'
+url='https://raw.githubusercontent.com/noetits/latent_space_exp/main/wavs/sent_'+'${ref_sent_id}'+'_code_'+"${ref_idx}"+'.wav'
+q('#ref').src = url
 var X_json = $.ajax({
   url: "https://raw.githubusercontent.com/noetits/latent_space_exp/main/wavs/X.json",
   dataType: "json",
@@ -102,19 +131,22 @@ $(window).load(function(){
             //$('#myImg').draggable();
             $('#myImg').on('click', function(event){
                 
-                var xRes = $('#xRes span');
-                var yRes = $('#yRes span');
+                // var xRes = $('#xRes span');
+                // var yRes = $('#yRes span');
                 
                 var image = $('img#myImg');
                 var img = document.getElementById('myImg');
                 var width = img.width        
                 var height = img.height
                 
-                xRes.html(image.offset().top);
-                yRes.html(image.offset().left);
+                // xRes.html(image.offset().top);
+                // yRes.html(image.offset().left);
                 
-                var x = event.clientX;
-                var y = event.clientY;
+                var x = event.pageX;
+                var y = event.pageY;
+                console.log("click detected:")
+                console.log(x)
+                console.log(y)
             
                 //var coords = "X coords: " + x + ", Y coords: " + y;
                 //document.getElementById("demo").innerHTML = coords;
@@ -128,14 +160,13 @@ $(window).load(function(){
                     q('#message').textContent = 'Loading...'
                     //q('#button').disabled = true
                     q('#audio').hidden = true
-                    var sent_id = document.querySelector('input[name="ChoiceSample2"]:checked').value;
-                    synthesize(sent_id, xRel, yRel)
+                    //var sent_id = document.querySelector('input[name="ChoiceSample2"]:checked').value;
+                    synthesize('${latent_sent_id}', xRel, yRel)
                 }
             });
         });
     });
 
-    function q(selector) {return document.querySelector(selector)}
     q('#text').focus()
     function synthesize(text_id, x, y) {
 
@@ -149,8 +180,8 @@ $(window).load(function(){
       //console.log(xData);
       yData=map_range(1-y, rel_box[0][1], rel_box[1][1], data_box[0][1], data_box[1][1]);
 
-      document.getElementById("x").innerHTML = xData.toFixed(2);
-      document.getElementById("y").innerHTML = yData.toFixed(2);
+      document.getElementById("x").innerHTML = xData;
+      document.getElementById("y").innerHTML = yData;
       //function q(selector) {return document.querySelector(selector)}
 
       
@@ -172,6 +203,7 @@ $(window).load(function(){
       console.log(idx)
 
       console.log('sent_'+text_id+'_code_'+idx+'.wav')
+      $('input[name="selected_idx"]').val(idx);
 
 
       // fetch('http://decombastower:5000/audio?text=' + text + '&x='+x+ '&y='+y, {cache: 'no-cache'})
@@ -190,7 +222,6 @@ $(window).load(function(){
           //q('#button').disabled = false
         })
     }
-    
     
 </script>
 
