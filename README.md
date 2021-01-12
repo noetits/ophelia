@@ -2,12 +2,17 @@
 
 ICE-Talk is an Interface for a Controllable Expressive Talking Machine. 
 It is a web-based GUI that allows the use of a TTS system with controllable parameters via a text field and a clickable 2D plot. It enables the study of latent spaces for controllable TTS.
-
-[![Alt text](https://img.youtube.com/vi/TT4jGWzfMIs/0.jpg)](https://www.youtube.com/watch?v=TT4jGWzfMIs)
-
 This repository implements:
 * [ICE-Talk](https://arxiv.org/abs/2008.11045)
 * [Visualization and Interpretation of Latent Spaces for Controlling Expressive Speech Synthesis Through Audio Analysis](https://www.isca-speech.org/archive/Interspeech_2019/abstracts/1426.html)
+
+Here are samples from a model trained on [Blizzard 2013 dataset](https://www.synsig.org/index.php/Blizzard_Challenge_2013) that you can explore through a 2D interface: https://jsfiddle.net/g9aos1dz/show
+
+All the samples behind that are stored [here](https://github.com/noetits/latent_space_exp)
+
+And here is a demo of the TTS with control from the 2D space, trained with a proprietary dataset, containing specific speech style categories:
+
+[![Alt text](https://img.youtube.com/vi/TT4jGWzfMIs/0.jpg)](https://www.youtube.com/watch?v=TT4jGWzfMIs)
 
 The TTS architecture is based on Oliver Watt's [ophelia](https://github.com/CSTR-Edinburgh/ophelia) and Kyubyong Park's [dc_tts repository](https://github.com/Kyubyong/dc_tts), which implements a variant of the system described in [Efficiently Trainable Text-to-Speech System Based on Deep Convolutional Networks with Guided Attention](https://arxiv.org/abs/1710.08969).
 
