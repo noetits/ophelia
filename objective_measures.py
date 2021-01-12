@@ -14,13 +14,13 @@ import numpy as np
 import os
 
 from configuration import load_config
-conf_file='/home/noetits/doctorat_code/ophelia/config/blizzard_letters.cfg'
+# conf_file='/home/noetits/doctorat_code/ophelia/config/blizzard_letters.cfg'
 # conf_file='/home/noetits/doctorat_code/ophelia/config/blizzard_unsupervised_letters.cfg'
 # conf_file='/home/noetits/doctorat_code/ophelia/config/will_unsupervised_letters_unsup_graph_old_preprocess.cfg'
 
-hp=load_config(conf_file)
-model_type='t2m'
-logdir = hp.logdir + "-" + model_type 
+# hp=load_config(conf_file)
+# model_type='t2m'
+# logdir = hp.logdir + "-" + model_type 
 
 import pyworld as pw
 import soundfile as sf
@@ -28,6 +28,26 @@ import pandas as pd
 import pysptk
 from tqdm import tqdm
 import pickle 
+
+
+def compute_simple_LSD(reference_list, prediction_list):
+    costTot = 0.0
+    framesTot = 0    
+    for (synth, nat) in zip(prediction_list, reference_list):
+        #synth = prediction_tensor[i,:,:].astype('float64')
+        # len_nat = len(nat)
+        assert len(synth) == len(nat)
+        #synth = synth[:len_nat, :]
+        nat = nat.astype('float64')
+        synth = synth.astype('float64')
+        cost = sum([
+            mt.logSpecDbDist(natFrame, synthFrame)
+            for natFrame, synthFrame in zip(nat, synth)
+        ])
+        framesTot += len(nat)
+        costTot += cost
+    return costTot / framesTot
+    
 
 def compute_dtw_error(references, predictions, distance=mt.logSpecDbDist):
     minCostTot = 0.0
@@ -128,11 +148,11 @@ def mgc_lf0_vuv(f0, sp, ap, fs=22050, order=13, alpha=None):
     return mgc, lf0[:, None], vuv
 
 
-transcript=pd.read_csv(hp.transcript, sep='|', header=None)
-transcript.index=transcript.iloc[:,0]
-transcript=transcript.iloc[:,1]
 
 def compute_features_from_path(path):
+    transcript=pd.read_csv(hp.transcript, sep='|', header=None)
+    transcript.index=transcript.iloc[:,0]
+    transcript=transcript.iloc[:,1]
     from tqdm import tqdm
     d={}
     d['sp_list']=[]
@@ -272,8 +292,15 @@ def compute_errors_from_lists(ref_d, pred_d, fs=22050):
 
     # return MCD, VDE, F0_MSE
 
-ref_d, pred1_d, pred2_d =  load_features()
-print('-------  Errors between ref and classic TTS -------------')
-compute_errors_from_lists(ref_d, pred1_d)
-print('-------  Errors between ref and Unsup TTS -------------')
-compute_errors_from_lists(ref_d, pred2_d)
+
+def main_work():
+    ref_d, pred1_d, pred2_d =  load_features()
+    print('-------  Errors between ref and classic TTS -------------')
+    compute_errors_from_lists(ref_d, pred1_d)
+    print('-------  Errors between ref and Unsup TTS -------------')
+    compute_errors_from_lists(ref_d, pred2_d)
+
+
+if __name__=="__main__":
+
+    main_work()
