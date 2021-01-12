@@ -80,10 +80,7 @@ def main_work():
     logdir = hp.logdir + "-" + model_type 
     logger_setup.logger_setup(logdir)
     info('Command line: %s'%(" ".join(sys.argv)))
-
-
-
-
+    
 
     ### TODO: move this to its own function somewhere. Can be used also at synthesis time?
     ### Prepare reference data for validation set:  ### TODO: alternative to holding in memory?
@@ -111,8 +108,9 @@ def main_work():
     
 
     valid_filenames = np.array(valid_filenames)[v_indices]
-    validation_mags = [np.load(hp.full_audio_dir + os.path.sep + basename(fpath)+'.npy') \
-                                for fpath in valid_filenames]  
+    if model_type=='ssrn':
+        validation_mags = [np.load(hp.full_audio_dir + os.path.sep + basename(fpath)+'.npy') \
+                                    for fpath in valid_filenames]  
     #import pdb;pdb.set_trace()
     validation_text = validation_text[v_indices, :]
     validation_labels = None # default
