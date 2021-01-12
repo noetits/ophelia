@@ -19,3 +19,5 @@ umap-learn
 inflect
 falcon
 seaborn
+pyworld
+pysptk
