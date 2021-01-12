@@ -317,7 +317,6 @@ def abbridge_column_names(df):
     return df
 
 def main_work():
-    
     # ============= Process command line ============
     a = ArgumentParser()
     a.add_argument('-c', dest='config', required=True, type=str)
@@ -325,6 +324,7 @@ def main_work():
     a.add_argument('-t', dest='task', required=True, choices=['acoustic_analysis','compute_codes', 'reduce_codes', 'compute_opensmile_features', 'show_plot','ICE_TTS','ICE_TTS_server'])
     a.add_argument('-r', dest='reduction_method', required=False, choices=['pca', 'tsne', 'umap'])
     a.add_argument('-p', dest='port', required=False, type=int, default=5000)
+    a.add_argument('-s', dest='set', required=False, type=str, default='train')
     opts = a.parse_args()
     print('opts')
     print(opts)
@@ -335,8 +335,9 @@ def main_work():
     logdir = hp.logdir + "-" + model_type 
     port=opts.port
 
+    mode=opts.set
 
-    mode='validation'
+    config_name=opts.config.split('/')[-1].split('.')[0]
 
     logger_setup.logger_setup(logdir)
     info('Command line: %s'%(" ".join(sys.argv)))
@@ -376,6 +377,7 @@ def main_work():
         sys.exit(app.exec_())
     elif task=='ICE_TTS_server':
         
+        # import pdb;pdb.set_trace()
         from server.ice_tts_server import ICE_TTS_server
         try:
             embed=load_embeddings(logdir, mode=mode)[:,0,:]
@@ -384,15 +386,38 @@ def main_work():
         
         print('Loading embeddings')
         embed_reduc=load_embeddings(logdir, filename='emo_codes_'+method, mode=mode)
+        
+        from itertools import product
+        train_codes_pca=np.load(os.path.join(logdir,'emo_codes_pca_train.npy'))
+
+        pca_model=pickle.load(open(os.path.join(logdir,'code_reduction_model_pca.pkl'), 'rb'))
+        min_xy=train_codes_pca.min(axis=0)
+        max_xy=train_codes_pca.max(axis=0)
+        xs=np.mgrid[min_xy[0]:max_xy[0]:100j]
+        ys=np.mgrid[min_xy[1]:max_xy[1]:100j]
+        X=np.array(list(product(xs, ys)))
+        codes=pca_model.inverse_transform(X)
+
+
+        # X=np.load('X.npy')
+        # codes=np.load('codes.npy')
+
         print('Loading emo cats')
         emo_cats=get_emo_cats(hp)
         #emo_cats=load(logdir, filename='emo_cats')
         #import pdb;pdb.set_trace()
-        ice=ICE_TTS_server(hp, embed_reduc, embed, emo_cats, model_type=model_type, port=port)
+        ice=ICE_TTS_server(hp, X, codes, emo_cats, model_type=model_type, port=port)
+        # ice=ICE_TTS_server(hp, embed_reduc, embed, emo_cats, model_type=model_type, port=port)
         #ice=ICE_TTS_server(hp, embed_reduc, embed, model_type=model_type)
         #ice=ICE_TTS_server(hp, embed_reduc, embed, n_polar_axes=4, model_type=model_type)
     
     elif task=='acoustic_analysis':
+
+        
+        directory='results/'+config_name
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        
         import seaborn as sns
         from sklearn.feature_selection import SelectKBest
         from sklearn.feature_selection import f_regression
@@ -433,9 +458,12 @@ def main_work():
         corrs_embed_df=test_regression(model, pd.DataFrame(embed_valid), feat_df_valid)
         print('Correlations:')
         print(corrs_embed_df.sort_values(0)[::-1][:20])
-
+        corrs_embed_df.sort_values(0)[::-1][:20].to_csv(directory+'/correlations.csv')
+        
         selected=select_features(corrs_embed_df, feat_df_valid, intra_corr_thresh=0.7, corr_thresh=0.3)
         print(selected.to_latex().replace('\_sma3', ' ').replace('nz','').replace('\_','').replace('amean','mean').replace('semitoneFrom27.5Hz',''))
+        selected.to_csv(directory+'/selected_correlations.csv')
+
         # print('Gradients:')
         # print(coeff_df)
         
@@ -449,9 +477,13 @@ def main_work():
         corrs_embed_reduc_df=test_regression(model_reduc, pd.DataFrame(embed_reduc_valid), feat_df_valid)
         print('Correlations:')
         print(corrs_embed_reduc_df.sort_values(0)[::-1][:20])
+        corrs_embed_df.sort_values(0)[::-1][:20].to_csv(directory+'/correlations_reduc.csv')
+
 
         selected_reduc=select_features(corrs_embed_reduc_df, feat_df_valid, intra_corr_thresh=0.7, corr_thresh=0.25)
         print(selected.to_latex().replace('\_sma3', ' ').replace('nz','').replace('\_','').replace('amean','mean').replace('semitoneFrom27.5Hz',''))
+        selected_reduc.to_csv(directory+'/selected_correlations_reduc.csv')
+
 
         feat_predictions_df=pd.DataFrame(model.predict(embed))
         feat_predictions_df.index=feat_df.index
@@ -472,6 +504,7 @@ def main_work():
         # fig.savefig('figures/scatter_matrix.png')
 
         
+            
         h=100
         selected_feats=selected.index.to_list()
         fig, axs = plt.subplots(nrows=len(selected), ncols=1, figsize=(h/len(selected)*3, h))
@@ -479,12 +512,15 @@ def main_work():
             x=feat_df[selected_feats[i]]
             y=feat_predictions_df[selected_feats[i]]
             axs[i].scatter(x, y, alpha=0.2)
-        fig.savefig('figures/scatter_plots_feats.png')
+        fig.savefig(directory+'/scatter_plots_feats.png')
 
         
         #print(corrs_embed_reduc_df)
         print('Gradients:')
         print(coeff_reduc_df)
+        coeff_reduc_df.to_csv(directory+'/gradients.csv')
+
+        
 
         normalized_gradients=coeff_reduc_df.div(((coeff_reduc_df**2).sum(axis=1))**0.5, axis=0)
         
@@ -494,7 +530,7 @@ def main_work():
         # sc=scatter_plot(embed_reduc, c=feat_df['F0semitoneFrom27.5Hz_sma3nz_amean'].values)
         sc=scatter_plot(embed_reduc, c=feat_df['F0 mean'].values)
         plot_gradients(normalized_gradients,selected_reduc, ax=sc.get_figure().gca())
-        sc.get_figure().savefig('figures/scatter_F0_mean_'+method+'.png')
+        sc.get_figure().savefig(directory+'/scatter_F0_mean_'+method+'.png')
 
 
         plt.cla()
@@ -503,7 +539,7 @@ def main_work():
         # sc=scatter_plot(embed_reduc, c=feat_df['F0semitoneFrom27.5Hz_sma3nz_amean'].values)
         sc=scatter_plot(embed_reduc, c=feat_df['F0 percentile50.0'].values)
         plot_gradients(normalized_gradients,selected_reduc, ax=sc.get_figure().gca())
-        sc.get_figure().savefig('figures/scatter_F0_percentile50.0_'+method+'.png')
+        sc.get_figure().savefig(directory+'/scatter_F0_percentile50.0_'+method+'.png')
 
         print(feat_df.columns)
         # import pdb;pdb.set_trace()
@@ -513,7 +549,7 @@ def main_work():
         # sc=scatter_plot(embed_reduc, c=feat_df['F0semitoneFrom27.5Hz_sma3nz_amean'].values)
         sc=scatter_plot(embed_reduc, c=feat_df['F3amplitudeLogRelF0 stdNorm'].values)
         plot_gradients(normalized_gradients,selected_reduc, ax=sc.get_figure().gca())
-        sc.get_figure().savefig('figures/scatter_F3amplitudeLogRelF0_stdNorm_'+method+'.png')
+        sc.get_figure().savefig(directory+'/scatter_F3amplitudeLogRelF0_stdNorm_'+method+'.png')
 
         
         plt.cla()
@@ -522,14 +558,14 @@ def main_work():
         # sc=scatter_plot(embed_reduc, c=feat_df['F0semitoneFrom27.5Hz_sma3nz_amean'].values)
         sc=scatter_plot(embed_reduc, c=feat_df['stdVoicedSegmentLengthSec'].values)
         plot_gradients(normalized_gradients,selected_reduc, ax=sc.get_figure().gca())
-        sc.get_figure().savefig('figures/scatter_stdVoicedSegmentLengthSec_'+method+'.png')
+        sc.get_figure().savefig(directory+'/scatter_stdVoicedSegmentLengthSec_'+method+'.png')
 
         
         plt.cla()
         plt.clf() 
         plt.close()
         hist=sns.distplot(feat_df['F0 mean'])
-        hist.get_figure().savefig('figures/hist_F0_mean_'+method+'.png')
+        hist.get_figure().savefig(directory+'/hist_F0_mean_'+method+'.png')
 
         # hist=sns.distplot(feat_df['F3amplitudeLogRelF0 stddevNorm'])
         # hist.get_figure().savefig('figures/hist_F3amplitudeLogRelF0_stddevNorm_'+method+'.png')
@@ -543,19 +579,19 @@ def main_work():
         # Plot corrs heatmaps
         plt.close()
         corrs_heatmap_feats=sns.heatmap(feat_df.corr().abs(), xticklabels=False)
-        corrs_heatmap_feats.get_figure().savefig('figures/corrs_heatmap_feats.pdf', bbox_inches='tight')
+        corrs_heatmap_feats.get_figure().savefig(directory+'/corrs_heatmap_feats.pdf', bbox_inches='tight')
 
         plt.close()
         embed_corr=pd.DataFrame(embed).corr().abs()
         embed_corr_heatmap=sns.heatmap(embed_corr)
-        embed_corr_heatmap.get_figure().savefig('figures/embed_corr_heatmap.pdf', bbox_inches='tight')
+        embed_corr_heatmap.get_figure().savefig(directory+'/embed_corr_heatmap.pdf', bbox_inches='tight')
 
         plt.close()
         corr_feat_embed=pd.concat([pd.DataFrame(embed),feat_df], axis=1).corr().abs()
         sns.set(font_scale=0.2)
         corr_feat_embed_heatmap=sns.heatmap(corr_feat_embed, xticklabels=False)
         # add_margin(corr_feat_embed_heatmap,x=0.1,y=0.0)
-        corr_feat_embed_heatmap.get_figure().savefig('figures/corr_feat_embed_heatmap.pdf', bbox_inches='tight')
+        corr_feat_embed_heatmap.get_figure().savefig(directory+'/corr_feat_embed_heatmap.pdf', bbox_inches='tight')
         
 
     else:
