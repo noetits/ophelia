@@ -6,7 +6,11 @@ This repository implements:
 * [ICE-Talk](https://arxiv.org/abs/2008.11045)
 * [Visualization and Interpretation of Latent Spaces for Controlling Expressive Speech Synthesis Through Audio Analysis](https://www.isca-speech.org/archive/Interspeech_2019/abstracts/1426.html)
 
-Here are samples from a model trained on [Blizzard 2013 dataset](https://www.synsig.org/index.php/Blizzard_Challenge_2013) that you can explore through a 2D interface: https://jsfiddle.net/g9aos1dz/show
+Here are samples from a model trained on [Blizzard 2013 dataset](https://www.synsig.org/index.php/Blizzard_Challenge_2013) that you can explore through a 2D interface: 
+
+http://noetits.com/speak-with-style-demo/
+
+https://jsfiddle.net/g9aos1dz/show
 
 All the samples behind that are stored [here](https://github.com/noetits/latent_space_exp)
 
