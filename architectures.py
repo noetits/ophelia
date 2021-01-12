@@ -46,14 +46,14 @@ class Graph(object):
             getLineInfo()
             print('Loading data in memory')
             for fpath in tqdm(fpaths):
-                fn,mel,mag=self.load_spectrograms_in_memory(fpath, audio_extension=fpath.split('.')[-1])
+                fn,mel,mag=self.load_spectrograms_in_memory(fpath, audio_extension=fpath.split('.')[-1], model=model)
                 mels[fn.split('.')[0]]=mel
                 if model=='ssrn': mags[fn.split('.')[0]]=mag
             self.data={}
             self.data['mel']=mels
             if model=='ssrn': self.data['mag']=mags
     
-    def load_spectrograms_in_memory(self, fpath, audio_extension='wav'):
+    def load_spectrograms_in_memory(self, fpath, audio_extension='wav', model='t2m'):
         try:
             fname = os.path.basename(fpath)
         except TypeError:
@@ -70,7 +70,12 @@ class Graph(object):
             print ('mag file:')
             print (mag)
             print (np.load(mag).shape)
-        return fname, np.load(mel), np.load(mag)
+        
+        if model=='ssrn':
+            mag_loaded=np.load(mag)
+        else:
+            mag_loaded=None
+        return fname, np.load(mel), mag_loaded
     
     def load_wavs_in_memory(self, fpath, audio_extension='wav'):
         try:
