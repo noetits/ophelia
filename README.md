@@ -7,7 +7,7 @@ This repository implements:
 * [ICE-Talk: an Interface for a Controllable Expressive Talking Machine](https://isca-speech.org/archive/Interspeech_2020/abstracts/4001.html)
 * [ICE-Talk 2: Interface for Controllable Expressive TTS with perceptual assessment tool](https://doi.org/10.1016/j.simpa.2021.100055)
 **!!! NEW !!!**
-This Journal Article comes with a fully reproducible code capsule. It consists of an environment setup, a pretrained model, and all the preprocessing steps up to the acoustic analysis:
+This Journal Article comes with a fully reproducible code capsule. It consists of an environment setup, a pretrained model (LJ-Speech seed), and all the preprocessing steps up to the acoustic analysis:
 https://doi.org/10.24433/CO.1645822.v1
 
 Click on "Reproducible Run" to execute. Look at "run.sh" in the capsule to see what is done.
