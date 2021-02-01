@@ -3,8 +3,16 @@
 ICE-Talk is an Interface for a Controllable Expressive Talking Machine. 
 It is a web-based GUI that allows the use of a TTS system with controllable parameters via a text field and a clickable 2D plot. It enables the study of latent spaces for controllable TTS.
 This repository implements:
-* [ICE-Talk](https://isca-speech.org/archive/Interspeech_2020/abstracts/4001.html)
 * [Visualization and Interpretation of Latent Spaces for Controlling Expressive Speech Synthesis Through Audio Analysis](https://www.isca-speech.org/archive/Interspeech_2019/abstracts/1426.html)
+* [ICE-Talk: an Interface for a Controllable Expressive Talking Machine](https://isca-speech.org/archive/Interspeech_2020/abstracts/4001.html)
+* [ICE-Talk 2: Interface for Controllable Expressive TTS with perceptual assessment tool](https://doi.org/10.1016/j.simpa.2021.100055)
+**!!! NEW !!!**
+This Journal Article comes with a fully reproducible code capsule. It consists of an environment setup, a pretrained model, and all the preprocessing steps up to the acoustic analysis:
+https://doi.org/10.24433/CO.1645822.v1
+
+Click on "Reproducible Run" to execute. Look at "run.sh" in the capsule to see what is done.
+You can dowload a **docker image** and see the **dockerfile** from there.
+
 
 Here are samples from a model trained on [Blizzard 2013 dataset](https://www.synsig.org/index.php/Blizzard_Challenge_2013) that you can explore through a 2D interface: 
 
